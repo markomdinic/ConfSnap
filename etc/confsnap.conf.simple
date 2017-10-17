@@ -1,0 +1,47 @@
+########################################################################################
+##
+## Global configuration
+##
+########################################################################################
+
+# Logging options
+log_to_syslog		yes
+log_to_console		yes
+syslog_facility		local7
+syslog_level		debug
+
+# Default module methods' timeout
+method_timeout		10
+module_timeout		60
+
+repository_datadir	/tmp/confbackup
+remote_repository_url	git@git.your.network:configurations/network-device-configurations.git
+
+colorize_output		yes
+
+########################################################################################
+##
+## Device configuration
+##
+########################################################################################
+
+device router1 host router1.your.network type ios
+ password	adminpass
+ enable		enasecret
+
+device router2 host router2.your.network type ios
+ password	adminpass
+ enable		enasecret
+
+device router3 host router3.your.network type ios
+ password	adminpass
+ enable		enasecret
+
+device router4 host router4.your.network type iosxr
+ username	adminuser
+ password	adminpass
+ enable		enasecret
+
+device customer1 host 172.30.150.11 type ios in vrf CPE-MANAGEMENT-VRF on router2
+ password	customerpass
+ enable		customerena

@@ -1,0 +1,1609 @@
+#!/usr/bin/perl
+#
+# ConfSnap (Network device configuration backup utility)
+#
+# Copyright (c) 2017 Marko Dinic. All rights reserved.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+##############################################################################################
+
+our $VERSION = "0.01";
+
+##############################################################################################
+
+our ($ABSPATH, $PREFIX, $COMMAND, $LIBDIR, $SYSCONFDIR, $LOCALSTATEDIR);
+
+BEGIN {
+
+    use Cwd qw(abs_path);
+    $ABSPATH = abs_path($0);
+    ($PREFIX, $COMMAND) = ($ABSPATH =~ /^(?:(.*)\/)?([^\/]+)$/);
+
+##############################################################################################
+# DEFAULT PATHS BEGIN (change if neccessary)
+##############################################################################################
+
+
+    $LIBDIR = $PREFIX.'/lib';
+    $SYSCONFDIR = $PREFIX.'/etc';
+    $LOCALSTATEDIR = '/var';
+
+
+##############################################################################################
+# DEFAULT PATHS END (don't change anything below this line)
+##############################################################################################
+
+}
+
+##############################################################################################
+
+use lib $LIBDIR;
+
+##############################################################################################
+
+use strict;
+use warnings;
+
+##############################################################################################
+
+use Getopt::Std;
+use POSIX qw(:signal_h :sys_wait_h);
+use Config::ContextSensitive qw(:macros);
+
+##############################################################################################
+
+use api::base;
+use api::base::vcs;
+use api::util::event;
+
+##############################################################################################
+#                    P R E - C O N F I G U R A T I O N   D E F A U L T S
+##############################################################################################
+
+my %DEFAULTS = (
+    'configfile'		=> "/opt/confsnap/etc/confsnap.conf",
+    'configdir'			=> "/opt/confsnap/etc",
+);
+
+##############################################################################################
+#                       C O N F I G U R A T I O N   T E M P L A T E
+##############################################################################################
+
+my $CONF_TEMPLATE = SECTION(
+    HIDDEN('configdir', ARG(CF_PATH, STORE(TO 'CONFIG', KEY 'configdir'), DEFAULT $SYSCONFDIR)),
+    DIRECTIVE('log_to_syslog', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'log_to_syslog'), DEFAULT '1')),
+    DIRECTIVE('log_to_console', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'log_to_console'), DEFAULT '0')),
+    DIRECTIVE('syslog_facility', MAP(FROM 'LOG_FACILITIES', STORE(TO 'CONFIG', KEY 'syslog_facility'), DEFAULT 'daemon')),
+    DIRECTIVE('syslog_level', MAP(FROM 'LOG_LEVELS', STORE(TO 'CONFIG', KEY 'syslog_level'), DEFAULT 'info')),
+    DIRECTIVE('method_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'CONFIG', KEY 'method_timeout'), DEFAULT '10')),
+    DIRECTIVE('module_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'CONFIG', KEY 'module_timeout'), DEFAULT '60')),
+    DIRECTIVE('colorize_output', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'colorize_output'), DEFAULT 'yes')),
+    DIRECTIVE('repository_datadir', ARG(CF_PATH, STORE(TO 'CONFIG', KEY 'datadir'), DEFAULT '/var/confsnap/')),
+    DIRECTIVE('remote_repository_url', ARG(CF_STRING, STORE(TO 'CONFIG', KEY 'remote_repository_url'))),
+    DIRECTIVE('device', SECTION_NAME, REQUIRE(
+	DIRECTIVE('host', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$NESTED_SECTION' => { 'host' => '$VALUE' } })), REQUIRE(
+	    DIRECTIVE('type', ARG(CF_STRING|CF_SECTION, POSTPARSER(&load_device_module), STORE(TO 'DEVICE', KEY { '$NESTED_SECTION' => { 'type' => '$VALUE' } })), OPTIONAL(
+		DIRECTIVE('in', REQUIRE(
+		    DIRECTIVE('vrf', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$NESTED_SECTION' => { 'vrf' => '$VALUE' } })), REQUIRE(
+			DIRECTIVE('on', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$VALUE' => { 'vrfs' => { '$ARG[8]' => [ '$NESTED_SECTION' ] } } })))
+		    ))
+		))
+	    ))
+	))
+    ))
+);
+
+##############################################################################################
+#                                     C O N S T A N T S
+##############################################################################################
+
+# Known syslog facilities
+our %LOG_FACILITIES = (
+    'auth'				=> 'LOG_AUTH',
+    'authpriv'				=> 'LOG_AUTHPRIV',
+    'cron'				=> 'LOG_CRON',
+    'daemon'				=> 'LOG_DAEMON',
+    'ftp'				=> 'LOG_FTP',
+    'kern'				=> 'LOG_KERN',
+    'lpr'				=> 'LOG_LPR',
+    'mail'				=> 'LOG_MAIL',
+    'news'				=> 'LOG_NEWS',
+    'syslog'				=> 'LOG_SYSLOG',
+    'user'				=> 'LOG_USER',
+    'uucp'				=> 'LOG_UUCP',
+    'local0'				=> 'LOG_LOCAL0',
+    'local1'				=> 'LOG_LOCAL1',
+    'local2'				=> 'LOG_LOCAL2',
+    'local3'				=> 'LOG_LOCAL3',
+    'local4'				=> 'LOG_LOCAL4',
+    'local5'				=> 'LOG_LOCAL5',
+    'local6'				=> 'LOG_LOCAL6',
+    'local7'				=> 'LOG_LOCAL7'
+);
+
+# Known syslog levels
+our %LOG_LEVELS = (
+    'emergency'				=> 'LOG_EMERG',
+    'alert'				=> 'LOG_ALERT',
+    'critical'				=> 'LOG_CRIT',
+    'error'				=> 'LOG_ERR',
+    'warning'				=> 'LOG_WARNING',
+    'notice'				=> 'LOG_NOTICE',
+    'info'				=> 'LOG_INFO',
+    'debug'				=> 'LOG_DEBUG'
+);
+
+my $USAGE = $COMMAND." [config file] start|stop|reload|restart|status|dontfork\n";
+
+##############################################################################################
+#                                       G L O B A L S
+##############################################################################################
+
+our (%OPTS, %CONFIG, %DEVICE);
+our ($API, $EV);
+
+%OPTS = ();
+%CONFIG = ();
+%DEVICE = ();
+
+##############################################################################################
+#                C O M M A N D   L I N E   A R G U M E N T   P A R S E R
+##############################################################################################
+
+# Display help if invoked without arguments
+unless(scalar(@ARGV)) {
+    VERSION_MESSAGE();
+    HELP_MESSAGE();
+    exit(0);
+}
+
+# Get options from command line
+$Getopt::Std::STANDARD_HELP_VERSION = 1;
+getopts("hvc:", \%OPTS);
+
+# Show version
+if(defined($OPTS{'v'})) {
+    VERSION_MESSAGE();
+    exit(0);
+}
+# Show help
+if(defined($OPTS{'h'})) {
+    VERSION_MESSAGE();
+    HELP_MESSAGE();
+    exit(0);
+}
+# Determine our configuration file location:
+# ether a specific location, explicitly given
+# on the command line, or the default one
+my $CONFIGFILE = (defined($OPTS{'c'}) &&
+		  $OPTS{'c'} ne '' &&
+		  -f $OPTS{'c'}) ?
+			    $OPTS{'c'}:
+			    $DEFAULTS{'configfile'};
+
+##############################################################################################
+#                    C O N F I G U R A T I O N   F I L E   P A R S E R
+##############################################################################################
+
+# Create config template object
+our $CONF = Config::ContextSensitive->new($CONF_TEMPLATE)
+    or die "Failed to initialize configuraton template\n";
+
+# Assign hashes to named configuration destinations
+$CONF->assign_destination('CONFIG', \%CONFIG);
+$CONF->assign_destination('DEVICE', \%DEVICE);
+
+# Load configuration file
+$CONF->load($CONFIGFILE)
+    or die "Failed to load configuration file ".$CONFIGFILE."\n";
+
+##############################################################################################
+#                                         M A I N
+##############################################################################################
+
+# Initialize base API
+$API = api::base->new(\%CONFIG, \%DEVICE);
+die "Failed to initialize API.\n" unless(defined($API) &&
+					 ref($API) eq "api::base");
+
+my $res = 1;
+
+my $action = shift @ARGV;
+
+# Missing action ?
+if(!defined($action) || $action eq "") {
+
+    print STDERR "Missing mandatory action argument. Try help:\n";
+    HELP_MESSAGE();
+    exit(255);
+
+# Retrieve configuration ?
+} elsif($action eq "fetch") {
+
+    # Grab and store configurations from
+    #  - a single configured device
+    #  - a subset of configured devices
+    #  - all configured devices
+    $res = &confsnap_fetch(@ARGV);
+
+# List configuration snapshots ?
+} elsif($action eq "list") {
+
+    my $device_name = shift @ARGV;
+    unless(defined($device_name) && $device_name ne "") {
+	print STDERR "Device name must be specified. Try help:\n";
+	HELP_MESSAGE();
+	exit(255);
+    }
+
+    # Retrieve list of configuration
+    # snapshots for specified device
+    $res = &confsnap_list($device_name);
+
+# Show specific configuration snapshot ?
+} elsif($action eq "show") {
+
+    unless(scalar(@ARGV) > 0) {
+	print STDERR "At least device name must be specified. Try help:\n";
+	HELP_MESSAGE();
+	exit(255);
+    }
+
+    my ($device_name, $clause, $selector) = @ARGV;
+
+    # By default, show the most current configuration snapshot
+    my $snapshot = 0;
+
+    # Looking for a historical snapshot ?
+    if(defined($clause) && $clause ne "") {
+
+	# Selector has to be defined
+	unless(defined($selector) && $selector ne "") {
+	    print STDERR "Snapshot selector is missing. Try help:\n";
+	    HELP_MESSAGE();
+	    exit(255);
+	}
+	# Format path to device's configuration storage
+	my $path = $API->device_config_path($device_name);
+
+	die "Invalid configuration snapshot path\n" unless(defined($path) && $path ne "");
+
+	# Refer to the exact snapshot by index
+	if($clause eq "snapshot") {
+
+	    die "Invalid snapshot index \"".$selector."\" specified.\n" unless($selector =~ /^\d+$/);
+
+	    $snapshot = $API->snapshot_at($selector, $path);
+	    unless(defined($snapshot) && $snapshot ne "") {
+		print STDERR "No snapshot found at index ".$selector."\n";
+		exit(255);
+	    }
+
+	# Refer to the first snapshot at or BEFORE specified time
+	} elsif($clause eq "before") {
+
+	    $snapshot = $API->snapshot_before($selector, $path);
+	    unless(defined($snapshot) && $snapshot ne "") {
+		print STDERR "No snapshot found before ".$selector."\n";
+		exit(255);
+	    }
+
+	# Refer to the first snapshot at or AFTER specified time
+	} elsif($clause eq "after") {
+
+	    $snapshot = $API->snapshot_after($selector, $path);
+	    unless(defined($snapshot) && $snapshot ne "") {
+		print STDERR "No snapshot found after ".$selector."\n";
+		exit(255);
+	    }
+
+	} else {
+
+	    print STDERR "Invalid clause \"".$clause."\". Try help:\n";
+	    HELP_MESSAGE();
+	    exit(255);
+
+	}
+
+    }
+
+    # Display requested configuration
+    $res = &confsnap_show($device_name, $snapshot);
+
+# Show diff between 2 configuration snapshots ?
+} elsif($action eq "diff") {
+
+    my $device_name = shift @ARGV;
+
+    my @snapshot_descriptions = ();
+    my @description_formatters = $CONFIG{'colorize_output'} ?
+				    ("\033[01;31m%s (---)\033[00m", "\033[01;32m%s (+++)\033[00m"):
+				    ("%s (---)", "%s (+++)");
+
+    my @diff_args = ();
+
+    for(1..2) {
+
+	my $clause = shift @ARGV;
+	my $selector = shift @ARGV;
+
+	unless(defined($clause)) {
+	    print STDERR "Missing snapshot selector type clause. Try help:\n";
+	    HELP_MESSAGE();
+	    exit(255);
+	}
+
+	unless(defined($selector)) {
+	    print STDERR "Missing snapshot selector. Try help:\n";
+	    HELP_MESSAGE();
+	    exit(255);
+	}
+
+	my $description_fmt = shift @description_formatters;
+
+	my $snapshot;
+
+	if($clause eq "snapshot") {
+
+	    die "Invalid snapshot index \"".$selector."\" specified.\n" unless($selector =~ /^\d+$/);
+
+	    $snapshot = $API->snapshot_at($selector);
+	    unless(defined($snapshot) && $snapshot ne "") {
+		print STDERR "No snapshot found at index ".$selector."\n";
+		exit(255);
+	    }
+
+	    push @snapshot_descriptions, sprintf($description_fmt, "at index ".$selector);
+
+	} elsif($clause eq "before") {
+
+	    # Get id (hash) for shapshot before this datetime
+	    $snapshot = $API->snapshot_before($selector);
+	    unless(defined($snapshot) && $snapshot ne "") {
+		print STDERR "No snapshot found before ".$selector."\n";
+		exit(255);
+	    }
+
+	    push @snapshot_descriptions, sprintf($description_fmt, "before \"".$selector."\"");
+
+	} elsif($clause eq "after") {
+
+	    # Get id (hash) for shapshot after this datetime
+	    $snapshot = $API->snapshot_after($selector);
+	    unless(defined($snapshot) && $snapshot ne "") {
+		print STDERR "No snapshot found after ".$selector."\n";
+		exit(255);
+	    }
+
+	    push @snapshot_descriptions, sprintf($description_fmt, "after \"".$selector."\"");
+
+	} else {
+
+	    die "Invalid clause \"".$clause."\" specified.\n";
+
+	}
+
+	# Add configuration snapshot id (hash)
+	# to the list arguments for diff
+	push @diff_args, $snapshot;
+
+    }
+
+    print STDOUT "\nComparing device configuration snapshot ".join(' to snapshot ', @snapshot_descriptions)."\n\n";
+
+    # Make a diff between 2 configuration snapshots
+    $res = &confsnap_diff($device_name, @diff_args);
+
+# Unknown operation
+} else {
+
+    print STDERR "Invalid action \"".$action."\". Try help:\n";
+    HELP_MESSAGE();
+    exit(255);
+
+}
+
+exit($res ? 0:255);
+
+##############################################################################################
+#                   g e t o p t s ( )   H E L P E R   F U N C T I O N S
+##############################################################################################
+
+sub VERSION_MESSAGE
+{
+    print "ConfSnap v".$VERSION." , Copyright (c) 2017 Marko Dinic. All rights reserved.\n";
+}
+
+sub HELP_MESSAGE
+{
+    print "\n";
+    print "Usage:\n\n";
+    print "  ".$COMMAND." [options] fetch [device_name] [device_name_2] [device_name_3] ... [device_name_N]\n";
+    print "  ".$COMMAND." [options] list <device_name>\n";
+    print "  ".$COMMAND." [options] show <device_name> [before|after|snapshot sel>\n";
+    print "  ".$COMMAND." [options] diff <device_name> <before|after|snapshot sel1> <before|after|snapshot sel2>\n\n";
+    print "Where:\n\n";
+    print "  - device_name_* is not a hostname or an address, but a name as it appears in configuration file.\n";
+    print "  - sel* is a flexible, absolute or relative timedate string, if 'before' or 'after' clauses are used\n";
+    print "    or index into configuration history, if 'snapshot' clause is used - 'snapshot 0' being the current\n";
+    print "    configuration, 'snapshot 1' being the previous configuration, 'snapshot 2' being the configuration\n";
+    print "    before that, etc.\n\n";
+    print "Available helper options:\n\n";
+    print "  --version|-v          Show version\n";
+    print "  --help|-h             Show this help message\n\n";
+    print "Available common options:\n\n";
+    print "  -c <config_file>      Specify alternative configuration file to use\n";
+    print "  -d                    Enable debug\n\n";
+}
+
+##############################################################################################
+#                C O M M A N D   L I N E   A C T I O N   F U N C T I O N S
+##############################################################################################
+
+#
+# Retrieve device configuration
+#
+#  This function retrieves configurations from specified devices.
+#  If no particular device was given, we assume all devices.
+#
+#  Implements the initialization code for "fetch" command line
+#  argument.
+#
+#   Input:	1+ (optional) list of device names as they
+#		   appear in our configuration file.
+#
+#   Output:	1. TRUE, if succeeded
+#		   FALSE, if failed
+#
+sub confsnap_fetch(;@)
+{
+    # Initialize event engine
+    $EV = api::util::event->new();
+    unless(defined($EV) && ref($EV) eq "api::util::event") {
+	print STDERR "Failed to initialize event engine.\n";
+	return 0;
+    }
+
+    $API->logging('LOG_DEBUG', $CONF->show_config());
+
+    # Create module instance for each configured device
+    # and retrieve the list of instantiated device hosts
+    my $devices = &instantiate_devices(@_);
+    unless(defined($devices) && ref($devices) eq "ARRAY" && scalar(@{$devices}) > 0) {
+	print STDERR "Failed to instantiate devices.\n";
+	return 0;
+    }
+
+    # Create recurring event that will fetch device configs,
+    # giving it's handler the list of devices to be backed up
+    my $event = $EV->create_recurring_event('handler' => \&fetch_device_config,
+					    'args' => [ $devices ]);
+    unless(defined($event) && ref($event) eq "HASH") {
+	print STDERR "Failed to initialize event loop.\n";
+	return 0;
+    }
+
+    # Reset local log buffer
+    $API->local_log = "";
+
+    # Run event loop
+    while(!$EV->stopped()) {
+	# Collect triggered events
+	my @events = $EV->poll();
+	# Process all events by triggering
+	# their handlers in order in which
+	# they were returned by poll()
+	for(my $handler = shift @events;
+	    !$EV->stopped() && defined($handler);
+	    $handler = shift @events) {
+	    # Invoke handler
+	    unless($handler->()) {
+		# If handler returned false, abort
+		$EV->stop();
+	    }
+	}
+    }
+
+    # Commit changes (if any)
+    $API->commit($API->local_log);
+
+    # Remove recurring event
+    $EV->destroy_recurring_event($event);
+
+    return 1;
+}
+#
+# List configuration snapshots for particular device
+#
+#  This function displays the list of configuration snapshots
+#  that exist in VCS repository for the specified device.
+#
+#  Implements the core of "list" command line argument.
+#
+#   Input:	1. device name as it appears in our config file
+#
+#   Output:	1. TRUE, if succeeded
+#		   FALSE, if failed
+#
+sub confsnap_list($)
+{
+    my $device_name = shift;
+
+    # Specified device must exist in our configuration
+    unless(defined($DEVICE{$device_name})) {
+	print STDERR "Unknown device ".$device_name."\n";
+	return 0;
+    }
+
+    # Format path to the specified device's
+    # configuration storage directory
+    my $path = $API->device_config_path($device_name);
+    return 0 unless(defined($path) && $path ne "");
+
+    # Retrieve the list of snapshots for specified path
+    my $list = $API->snapshot_list($path);
+    return 0 unless(defined($list) && $list ne "");
+
+    # Display retrieved list
+    print STDOUT $list;
+
+    return 1;
+}
+#
+# Show device's configuration
+#
+#  This funcfion displays configuration for the specified device.
+#  By default, it will display the most current configuration, but
+#  it can also display any historical configuration stored in
+#  VCS repository.
+#
+#  Implements the core of "show" command line argument.
+#
+#   Input:	1. device name as it appears in our config file
+#		2. (optional) snapshot id if requesting historical
+#		   configuration
+#
+#   Output:	1. TRUE, if succeeded
+#		   FALSE, if failed
+#
+sub confsnap_show($;$)
+{
+    my ($device_name, $snapshot) = @_;
+
+    return 0 unless(defined($device_name) && $device_name ne "");
+
+    # Specified device must exist in our config file
+    unless(defined($DEVICE{$device_name})) {
+	print STDERR "Unknown device ".$device_name."\n";
+	return 0;
+    }
+
+    # If historical snapshot was requested ...
+    if($snapshot) {
+	# ... set VCS history to the requested point in time
+	$API->checkout($snapshot)
+	    or return 0;
+    }
+
+    # Get device's configuration from the VCS repository
+    my $device_config = $API->retrieve_device_config($device_name);
+    if(defined($device_config) && $device_config ne "") {
+	# Show device configuration
+	print STDOUT $device_config;
+    }
+
+    # If historical snapshot was requested ...
+    if($snapshot) {
+	# ... restore VCS history to the most current state
+	$API->checkout();
+    }
+
+    return 1;
+}
+#
+# Show diff between 2 snapshots for specified device
+#
+#  This function displays the diff between any 2 configuration
+#  snapshots for given device. If configured, it will colorize
+#  additions and deletions to emphasize the difference between
+#  specified snapshots.
+#
+#  Implements the core of "diff" command line argument.
+#
+#   Input:	1. device name as it appears in our config file
+#		2. first snapshot to compare
+#		3. second snapshot to comapre
+#
+#   Output:	1. TRUE, if succeeded
+#		   FALSE, if failed
+#
+sub confsnap_diff($$$)
+{
+    my ($device_name, $snapshot1, $snapshot2) = @_;
+
+    # Specified device must exist in our configuration
+    unless(defined($DEVICE{$device_name})) {
+	print STDERR "Unknown device ".$device_name."\n";
+	return 0;
+    }
+
+    # Path to the device config file in our VCS repository
+    my $path = $API->device_config_path($device_name);
+
+    # Get diff, split into lines
+    my @diff_lines = $API->diff($path, $snapshot1, $snapshot2);
+    # Skip first 2 lines
+    shift @diff_lines;
+    shift @diff_lines;
+
+    my $diff = "";
+
+    # Should output be colorized to emphasize additions and deletions ?
+    if($CONFIG{'colorize_output'}) {
+
+	# Rewrite diff lines to add purpose-specific colors
+	foreach my $line (@diff_lines) {
+	    # Addition line ...
+	    if($line =~ /^\+/) {
+		# ... should be in green
+		$diff .= "\033[01;32m".$line."\033[00m\n";
+	    # Deletion line ...
+	    } elsif($line =~ /^\-/) {
+		# ... should be in red
+		$diff .= "\033[01;31m".$line."\033[00m\n";
+	    # Offset line ...
+	    } elsif($line =~ /^(\@\@[^\@]+\@\@)(.*)$/) {
+		# ... should be in white
+		$diff .= "\033[01;39m".$1."\033[00m\n";
+		# This is supposed to fix git-diff's clearly unintended
+		# concatenation of offset line and the line following it
+		$diff .= " ".$2."\n" if($2 ne "");
+	    # The rest ...
+	    } else {
+		# ... should have default color
+		$diff .= $line."\n";
+	    }
+	}
+
+    # Diff output shouldn't be colorized ?
+    } else {
+
+	# Put together diff output
+	foreach my $line (@diff_lines) {
+	    # Offset line ...
+	    if($line =~ /^(\@\@[^\@]+\@\@)(.*)$/) {
+		# ... just append to the output
+		$diff .= $1."\n";
+		# This is supposed to fix git-diff's clearly unintended
+		# concatenation of offset line and the line following it
+		$diff .= " ".$2."\n" if($2 ne "");
+	    # The rest ...
+	    } else {
+		# ... just append to the output
+		$diff .= $line."\n";
+	    }
+	}
+
+    }
+
+    # Display diff output
+    print STDOUT $diff;
+
+    return 1;
+}
+
+##############################################################################################
+#               C O R E   C O D E   -   A C T U A L   F U N C T I O N A L I T Y
+##############################################################################################
+
+#
+# Retrieve devices' configurations
+#
+#  This function implements the core of device configuration
+#  retrieval mechanism. It relies on module instances to supply
+#  retrieval parameters and on modules themselves to actually
+#  retrieve device configurations in a device-type-specific
+#  manner. It is the skeleton code running and controlling
+#  the retrieval process, while module-supplied code only
+#  performs the device-type-specific stuff, like connection
+#  management, authentication, etc.
+#
+#  This function is used as a handler for event engine's
+#  recurring events. Therefore it's first input parameter
+#  is the event identifier, but it is not used anywhere.
+#  The rest is our own input parameters.
+#
+#   Input:	1. event hashref
+#		2. arrayref to the array of device names
+#		   as they appear in our config file.
+#
+#   Output:	1. TRUE, if suceeded
+#		   FALSE, if failed
+#
+sub fetch_device_config($$)
+{
+    my ($event, $devices) = @_;
+    my $commit_message = "";
+    my $message;
+
+    # Get next device
+    my $device_name = shift @{$devices};
+    # We are done if there is no more devices to backup
+    return 0 unless defined($device_name);
+
+    # Get device object reference
+    my $device = $DEVICE{$device_name};
+    return 1 unless defined($device);
+
+    # Ignore devices in VRFs - we are going to process them
+    # when processing PE device they are connected to
+    return 1 if(defined($device->{'vrf'}));
+
+    $API->logging('LOG_INFO', "Retrieving configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+
+    # Connect to the device
+    my $conn = $device->connect($device->{'host'});
+    return 1 unless defined($conn);
+    # If device requires a specific prompt,
+    # this method should be defined
+    my $prompt_func = $device->can('prompt');
+    if(defined($prompt_func)) {
+	# Expect device-specific prompt
+	$device->prompt($conn);
+	$API->logging('LOG_DEBUG', "Using device type specific prompt for ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+    }
+    # If device requires authentication,
+    # this method should be defined
+    my $auth_func = $device->can('auth');
+    if(defined($auth_func)) {
+	# Authenticate to our device
+	if($device->auth($conn)) {
+	    $API->logging('LOG_DEBUG', "Authenticated to ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+	} else {
+	    $API->logging('LOG_DEBUG', "Failed to authenticate to ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+	    return 1;
+	}
+    }
+
+    # Collect device configuration
+    my $device_config = $device->collect($conn);
+
+    if(defined($device_config) && $device_config ne "") {
+	$API->logging('LOG_DEBUG', "Collected configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+    } else {
+	$API->logging('LOG_DEBUG', "Failed to collect configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+	return 1;
+    }
+
+    # Can this device type connect to a remote device ?
+    my $remote_func = $device->can('remote');
+    if(defined($remote_func)) {
+	# If device has VRFs configured ...
+	if(defined($device->{'vrfs'})) {
+	    $API->logging('LOG_DEBUG', "Device ".$device_name." [".$device->{'host'}."] has configured VRFs");
+	    # While still connected to our device,
+	    # collect configuration from configured
+	    # remote devices.
+	    foreach my $vrf (keys %{$device->{'vrfs'}}) {
+		$API->logging('LOG_DEBUG', "Processing remote devices in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+		# Backup remote devices in current VRF
+		foreach my $remote_name (@{$device->{'vrfs'}{$vrf}}) {
+		    # Get the remote device object reference
+		    my $remote = $DEVICE{$remote_name};
+		    unless(defined($remote)) {
+			$API->logging('LOG_DEBUG', "Remote device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."] is missing configuration");
+			next;
+		    }
+
+		    # Remote device type's module must implement 'end' method,
+		    # otherwise we won't be able do detach once we are done
+		    my $end_func = $remote->can('end');
+		    unless(defined($end_func)) {
+			$API->logging('LOG_DEBUG', "Device module \"".$remote->{'type'}."\" used by remote device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."] doesn't implement required method end()");
+			next;
+		    }
+
+		    $API->logging('LOG_INFO', "Retrieving configuration from remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+
+		    # Connect from our device to the device on the remote end
+		    $device->remote($conn, $remote->{'host'}, $vrf);
+
+		    $API->logging('LOG_DEBUG', "Connected to remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+
+		    # Does remote device require some specific prompt ?
+		    my $prompt_func = $remote->can('prompt');
+		    if(defined($prompt_func)) {
+			# Expect remote device's prompt
+			$remote->prompt($conn);
+			$API->logging('LOG_DEBUG', "Using device type specific prompt for remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+		    }
+
+		    # Does remote device require authentication ?
+		    my $auth_func = $remote->can('auth');
+		    if(defined($auth_func)) {
+			# Authenticate to the remote device
+			if($remote->auth($conn)) {
+			    $API->logging('LOG_DEBUG', "Authenticated to remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+			} else {
+			    $API->logging('LOG_DEBUG', "Failed to authenticate to remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+			    next;
+			}
+		    }
+
+		    # Collect remote device's configuration
+		    my $remote_config = $remote->collect($conn);
+
+		    if(defined($remote_config) && $remote_config ne "") {
+			$API->logging('LOG_DEBUG', "Collected configuration from remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+		    } else {
+			$API->logging('LOG_DEBUG', "Failed to collec configuration from remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+		    }
+
+		    # Restore our device's prompt
+		    if(defined($prompt_func)) {
+			$device->prompt($conn);
+			$API->logging('LOG_DEBUG', "Restored device type specific prompt for ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+		    }
+
+		    # Close connection to the remote device
+		    $remote->end($conn);
+
+		    $API->logging('LOG_DEBUG', "Disconnected from remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+
+		    # If configuration was collected from the remote device ...
+		    if(defined($remote_config) && $remote_config ne "") {
+			# ... store it
+			if($API->store_device_config($remote_name, $remote_config)) {
+			    $API->logging('LOG_DEBUG', "Stored configuration from remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+			}
+		    }
+		}
+	    }
+	}
+    }
+
+    # Disconnect from our device
+    $device->disconnect($conn);
+
+    $API->logging('LOG_DEBUG', "Disconnected from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+
+    # Store collected configuration
+    my $res = $API->store_device_config($device_name, $device_config);
+
+    $API->logging('LOG_DEBUG', "Stored configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]") if($res);
+
+    return $res;
+}
+#
+# Create module instances for each device
+#
+#  This function creates the device-specific instances of
+#  previously loaded modules for each configured device.
+#  Modules implement device-type-specific configuration
+#  retrieval methods.
+#
+#  If list of device names is supplied, only specified
+#  devices will be instantiated. Otherwise, all devices
+#  present in our config file will be instantiated.
+#
+#   Input:	1+ (optional) device names, as they appear
+#		   in our config file.
+#
+#   Output:	1. reference to the array of device names
+#		   of instantiated devices,
+#		   undef, if failed.
+#
+sub instantiate_devices(;@)
+{
+    # The list of requested devices, passed as
+    # an explicit set of devices to instantiate.
+    # Otherwise, if no input argument was given,
+    # all configured devices are implied.
+    my $devices = (scalar(@_) > 0) ? \@_:[keys %DEVICE];
+
+    # Instantiate modules that handle configured devices
+    foreach my $device_name (@{$devices}) {
+	# Hashref to device backup parameters
+	my $device = $DEVICE{$device_name};
+	unless(defined($device)) {
+	    print STDERR "Unknown device ".$device_name." requested.\n";
+	    return undef;
+	}
+	# Every configured device should be of type
+	# that matches one of available modules
+	my $modclass = 'module::device::'.$device->{'type'};
+	# Create an instance of the module matching
+	# the device type from the device's backup
+	# parameters hash
+	my $res = $modclass->instantiate($device);
+	return undef unless defined($res);
+    }
+
+    return $devices;
+}
+#
+# Load device module
+#
+#  This function is used as a postparser callback in
+#  configuration template. It is used by config parser
+#  to load a module, retrieve module's config template
+#  and pass it back to the config parser.
+#
+#  Input:	parameters that Config::ContextSensitive
+#		config parser passes to a postparser.
+#
+#  Output:	parameters that are passed back to
+#		Config::ContextSensitive config parser.
+#
+sub load_device_module($$$$$$$)
+{
+    my ($conf, $directive_name, $value, $dest_hash, $map_hash, $section, $nested_section) = @_;
+
+    # Module's name is passed by the config parser
+    # as $value parameter. The rest is ignored.
+    my $moduleclass = 'module::device::'.$value;
+
+    # Load module
+    eval 'use '.$moduleclass;
+    if(defined($@) && $@ ne "") {
+	print STDERR $@;
+	$API->logging('LOG_ERR', $@);
+	return 0;
+    }
+
+    # Device module must implement method register()
+    my $method_register = eval { $moduleclass->can('register'); };
+    unless(defined($method_register) && ref($method_register) eq 'CODE') {
+	$API->logging('LOG_ERR', "Module %s is missing mandatory method register()",
+				 $value);
+	return 0;
+    }
+
+    # Device module must implement method instantiate()
+    my $method_instantiate = eval { $moduleclass->can('instantiate'); };
+    unless(defined($method_instantiate) && ref($method_instantiate) eq 'CODE') {
+	$API->logging('LOG_ERR', "Module %s is missing constructor method instantiate()",
+				 $value);
+	return 0;
+    }
+
+    # Device module must implement method connect()
+    my $method_connect = eval { $moduleclass->can('connect'); };
+    unless(defined($method_connect) && ref($method_connect) eq 'CODE') {
+	$API->logging('LOG_ERR', "Module %s is missing mandatory method connect()",
+				 $value);
+	return 0;
+    }
+
+    # Device module must implement method disconnect()
+    my $method_disconnect = eval { $moduleclass->can('disconnect'); };
+    unless(defined($method_disconnect) && ref($method_disconnect) eq 'CODE') {
+	$API->logging('LOG_ERR', "Module %s is missing mandatory method disconnect()",
+				 $value);
+	return 0;
+    }
+
+    # Device module must implement method collect()
+    my $method_collect = eval { $moduleclass->can('collect'); };
+    unless(defined($method_collect) && ref($method_collect) eq 'CODE') {
+	$API->logging('LOG_ERR', "Module %s is missing mandatory method collect()",
+				 $value);
+	return 0;
+    }
+
+
+    # Get module's configuration template
+    my $conf_template = $moduleclass->register();
+
+    return (1, $conf_template);
+}
+
+##############################################################################################
+#                                  A P I   F U N C T I O N S
+##############################################################################################
+
+#
+# Return base file name of this application
+#
+#  Input:	nothing
+#
+#  Output:	nothing
+#
+sub __get_progname() {
+    return $COMMAND;
+}
+#
+# Return version string of this application
+#
+#  Input:	nothing
+#
+#  Output:	nothing
+#
+sub __get_version() {
+    return $VERSION;
+}
+#
+# Return API base object reference
+#
+#  Input:	nothing
+#
+#  Output:	1. API base object reference
+#
+sub __get_api() {
+    return $API;
+}
+#
+# Return event engine object reference
+#
+#  Input:	nothing
+#
+#  Output:	1. EV object reference
+#
+sub __get_ev() {
+    return $EV;
+}
+#
+# Begin child process shutdown
+#
+#  This function is a wrapper for shutdown() method
+#  provided by api::util::event. It relies on global
+#  variable $EV to provide object reference to
+#  event monitor object.
+#
+#  Input:	nothing
+#
+#  Output:	nothing
+#
+sub __shutdown() {
+
+    # Event monitor must be initialized
+    return unless(defined($EV) &&
+		  ref($EV) eq 'api::util::event');
+
+    $EV->shutdown();
+}
+#
+# Stop processing and exit child process
+#
+#  This function is a wrapper for stop() method
+#  provided by api::util::event. It relies on global
+#  variable $EV to provide object reference to
+#  event monitor object.
+#
+#  Input:	nothing
+#
+#  Output:	nothing
+#
+sub __stop() {
+
+    # Event monitor must be initialized
+    return unless(defined($EV) &&
+		  ref($EV) eq 'api::util::event');
+
+    $EV->stop();
+}
+#
+# Verify if we are in running state
+#
+#  This function is a wrapper for running() method
+#  provided by api::util::event. It relies on global
+#  variable $EV to provide object reference to
+#  event monitor object.
+#
+#  Input:	nothing
+#
+#  Output:	1. TRUE, if running
+#		   FALSE, if not
+#		   undef, if event monitor is not initialized
+#
+sub __running() {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    return $EV->running();
+}
+#
+# Verify if we are in shutdown state
+#
+#  This function is a wrapper for shutting_down() method
+#  provided by api::util::event. It relies on global
+#  variable $EV to provide object reference to
+#  event monitor object.
+#
+#  Input:	nothing
+#
+#  Output:	1. TRUE, if shutting down
+#		   FALSE, if not
+#		   undef, if event monitor is not initialized
+#
+sub __shutting_down() {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    return $EV->shutting_down();
+}
+#
+# Verify if we are in stopped state
+#
+#  This function is a wrapper for stop() method
+#  provided by api::util::event. It relies on global
+#  variable $EV to provide object reference to
+#  event monitor object.
+#
+#  Input:	nothing
+#
+#  Output:	1. TRUE, if stopped
+#		   FALSE, if not
+#		   undef, if event monitor is not initialized
+#
+sub __stopped() {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    return $EV->stopped();
+}
+#
+# Create termination event
+#
+#  This function is a wrapper for create_termination_event()
+#  method provided by api::util::event. It relies on global
+#  variable $EV to provide object reference to event
+#  monitor object.
+#
+#   Input:	1. api::util::event::create_termination_event
+#		   params hash
+#
+#   Output:	1. termination event hashref, if successful
+#		   undef, if failed
+#
+sub __create_termination_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Set termination event
+    return $EV->create_termination_event(@_);
+}
+#
+# Create reaping event
+#
+#  This function is a wrapper for create_reaping_event() method
+#  provided by api::util::event. It relies on global variable
+#  $EV to provide object reference to event monitor object.
+#
+#   Input:	1. api::util::event::create_reaping_event
+#		   params hash
+#
+#   Output:	1. reaping event hashref, if successful
+#		   undef, if failed
+#
+sub __create_reaping_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Set reaping event
+    return $EV->create_reaping_event(@_);
+}
+#
+# Create reload event
+#
+#  This function is a wrapper for create_reload_event() method
+#  provided by api::util::event. It relies on global variable
+#  $EV to provide object reference to event monitor object.
+#
+#   Input:	1. api::util::event::create_reload_event
+#		   params hash
+#
+#   Output:	1. reload event hashref, if successful
+#		   undef, if failed
+#
+sub __create_reload_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Set reload event
+    return $EV->create_reload_event(@_);
+}
+#
+# Create recurring event
+#
+#  This function is a wrapper for create_recurring_event() method
+#  provided by api::util::event. It relies on global variable
+#  $EV to provide object reference to event monitor object.
+#
+#   Input:	1. api::util::event::create_recurring_event
+#		   params hash
+#
+#   Output:	1. recurring event hashref, if successful
+#		   undef, if failed
+#
+sub __create_recurring_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Set recurring event
+    return $EV->create_recurring_event(@_);
+}
+#
+# Create timer event
+#
+#  This function is a wrapper for create_timer_event() method
+#  provided by api::util::event. It relies on global variable
+#  $EV to provide object reference to event monitor object.
+#
+#   Input:	1. api::util::event::create_timer_event
+#		   params hash
+#
+#   Output:	1. timer event hashref, if successful
+#		   undef, if failed
+#
+sub __create_timer_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Set timer event
+    return $EV->create_timer_event(@_);
+}
+#
+# Create I/O event
+#
+#  This function is a wrapper for create_io_event() method
+#  provided by api::util::event. It relies on global variable
+#  $EV to provide object reference to event monitor object.
+#
+#   Input:	1. api::util::event::create_io_event
+#		   params hash
+#
+#   Output:	1. file handle, if successful
+#		   undef, if failed
+#
+sub __create_io_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Add I/O event
+    return $EV->create_io_event(@_);
+}
+#
+# Destroy termination event
+#
+#  This function is a wrapper for destroy_termination_event()
+#  method provided by api::util::event. It relies on global variable
+#  $EV to provide object reference to event monitor object.
+#
+#   Input:	1. event hashref returned by 
+#		   create_termination_event()
+#
+#   Output:	none
+#
+sub __destroy_termination_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Remove event from event monitor
+    return $EV->destroy_termination_event(@_);
+}
+#
+# Destroy reaping event
+#
+#  This function is a wrapper for destroy_reaping_event() method
+#  provided by api::util::event. It relies on global variable
+#  $EV to provide object reference to event monitor object.
+#
+#   Input:	1. event hashref returned by
+#		   create_reaping_event()
+#
+#   Output:	none
+#
+sub __destroy_reaping_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Remove event from event monitor
+    return $EV->destroy_reaping_event(@_);
+}
+#
+# Destroy reload event
+#
+#  This function is a wrapper for destroy_reload_event() method
+#  provided by api::util::event. It relies on global variable
+#  $EV to provide object reference to event monitor object.
+#
+#   Input:	1. event hashref returned by
+#		   create_reload_event()
+#
+#   Output:	none
+#
+sub __destroy_reload_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Remove event from event monitor
+    return $EV->destroy_reload_event(@_);
+}
+#
+# Destroy recurring event
+#
+#  This function is a wrapper for destroy_recurring_event() method
+#  provided by api::util::event. It relies on global variable
+#  $EV to provide object reference to event monitor object.
+#
+#   Input:	1. event hashref returned by
+#		   create_recurring_event()
+#
+#   Output:	none
+#
+sub __destroy_recurring_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Remove event from event monitor
+    return $EV->destroy_recurring_event(@_);
+}
+#
+# Destroy timer event
+#
+#  This function is a wrapper for destroy_timer_event() method
+#  provided by api::util::event. It relies on global variable
+#  $EV to provide object reference to event monitor object.
+#
+#   Input:	1. event hashref returned by
+#		   create_timer_event()
+#
+#   Output:	none
+#
+sub __destroy_timer_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Remove event from event monitor
+    return $EV->destroy_timer_event(@_);
+}
+#
+# Destroy I/O event
+#
+#  This function is a wrapper for destroy_io_event() method
+#  provided by api::util::event. It relies on global variable
+#  $EV to provide object reference to event monitor object.
+#
+#   Input:	1. file handle
+#		2. operation ('r'-read,'w'-write,'rw'-read/write)
+#
+#   Output:	none
+#
+sub __destroy_io_event($) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Remove event from event monitor
+    return $EV->destroy_io_event(@_);
+}
+#
+# Modify termination event
+#
+#  This function is a wrapper for modify_termination_event()
+#  method provided by api::util::event. It relies on global
+#  variable $EV to provide object reference to event
+#  monitor object.
+#
+#   Input:	1. termination event hashref
+#		2. api::util::event::modify_termination_event
+#		   params hash
+#
+#   Output:	1. termination event hashref, if successfull
+#		   undef, if failed
+#
+sub __modify_termination_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Modify termination event
+    return $EV->modify_termination_event(@_);
+}
+#
+# Modify reaping event
+#
+#  This function is a wrapper for modify_reaping_event() method
+#  provided by api::util::event. It relies on global variable
+#  $EV to provide object reference to event monitor object.
+#
+#   Input:	1. reaping event hashref
+#		2. api::util::event::modify_reaping_event
+#		   params hash
+#
+#   Output:	1. reaping event hashref, if successfull
+#		   undef, if failed
+#
+sub __modify_reaping_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Modify reaping event
+    return $EV->modify_reaping_event(@_);
+}
+#
+# Modify reload event
+#
+#  This function is a wrapper for modify_reload_event() method
+#  provided by api::util::event. It relies on global variable
+#  $EV to provide object reference to event monitor object.
+#
+#   Input:	1. reload event hashref
+#		2. api::util::event::modify_reload_event
+#		   params hash
+#
+#   Output:	1. reload event hashref, if successfull
+#		   undef, if failed
+#
+sub __modify_reload_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Modify reload event
+    return $EV->modify_reload_event(@_);
+}
+#
+# Modify recurring event
+#
+#  This function is a wrapper for modify_recurring_event()
+#  method provided by api::util::event. It relies on global
+#  variable $EV to provide object reference to event
+#  monitor object.
+#
+#   Input:	1. recurring event hashref
+#		2. api::util::event::modify_recurring_event
+#		   params hash
+#
+#   Output:	recurring event hashref, if successfull
+#		undef, if failed
+#
+sub __modify_recurring_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Modify recurring event
+    return $EV->modify_recurring_event(@_);
+}
+#
+# Modify timer event
+#
+#  This function is a wrapper for modify_timer_event() method
+#  provided by api::util::event. It relies on global variable
+#  $EV to provide object reference to event monitor object.
+#
+#   Input:	1. timer event hashref
+#		2. api::util::event::modify_timer_event
+#		   params hash
+#
+#   Output:	1. timer event hashref, if successful
+#		   undef, if failed
+#
+sub __modify_timer_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Modify timer event
+    return $EV->modify_timer_event(@_);
+}
+#
+# Modify I/O event
+#
+#  This function is a wrapper for modify_io_event() method
+#  provided by api::util::event. It relies on global variable
+#  $EV to provide object reference to event monitor object.
+#
+#   Input:	1. file handle
+#		2. I/O operation ('r' - read , 'w' - write)
+#		3. api::util::event::modify_io_event params hash
+#
+#   Output:	1. file handle, if successful
+#		   undef, if failed
+#
+sub __modify_io_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Modify I/O event
+    return $EV->modify_io_event(@_);
+}
+#
+# Get event hashref
+#
+#  This function is a wrapper for get_event() method provided
+#  by api::util::event. It relies on global variable $EV
+#  to provide object reference to event monitor object.
+#
+#  Attpempts to identify the event which passed parameter
+#  belongs to.
+#
+#   Input:	1. event hashref or I/O event's file handle/descr
+#		2. I/O event's I/O operation (conditional)
+#
+#   Output:	1. event hashref, if suceeded
+#		   undef, if not found
+#
+sub __get_event(@) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Get specified event
+    return $EV->get_event(@_);
+}
+#
+# Delay next event trigger
+#
+#  This function is a wrapper for delay_event() method provided
+#  by api::util::event. It relies on global variable $EV to
+#  provide object reference to event monitor object.
+#
+#   Input:	1. event returned by create_xxxxx_event
+#		2. delay in seconds
+#
+#   Output:	1. TRUE, if suceeded
+#		   FALSE, if failed
+#
+sub __delay_event($) {
+
+    # Event monitor must be initialized
+    return undef unless(defined($EV) &&
+			ref($EV) eq 'api::util::event');
+
+    # Delay specified event
+    return $EV->delay_event(@_);
+}

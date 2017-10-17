@@ -1,0 +1,48 @@
+########################################################################################
+##
+## Global configuration
+##
+########################################################################################
+
+# Logging options
+log_to_syslog		yes
+log_to_console		yes
+syslog_facility		local7
+syslog_level		debug
+
+# Default module methods' timeout
+method_timeout		10
+module_timeout		60
+
+repository_datadir	/tmp/confbackup
+remote_repository_url	git@git.your.network:configurations/network-device-configurations.git
+
+colorize_output		yes
+
+########################################################################################
+##
+## Device configuration
+##
+########################################################################################
+
+device firewall1 host firewall1.your.network type asa
+ include_file	"/opt/confsnap/etc/devices/asa.conf"
+
+device border1 host border1.your.network type junos
+ include_file	"/opt/confsnap/etc/devices/junos.conf"
+
+device router1 host router1.your.network type ios
+ include_file	"/opt/confsnap/etc/devices/ios.conf"
+
+device router2 host router2.your.network type ios
+ include_file	"/opt/confsnap/etc/devices/ios.conf"
+
+device switch1 host switch1.your.network type force10
+ include_file	"/opt/confsnap/etc/devices/force10.conf"
+
+device switch2 host switch2.your.network type force10
+ include_file	"/opt/confsnap/etc/devices/force10.conf"
+
+device customer1 host 172.30.151.11 type ios in vrf CPE-MANAGEMENT-VRF on router2
+ password	customerpass
+ enable		customerena
