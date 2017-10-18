@@ -20,7 +20,7 @@
 
 ##############################################################################################
 
-our $VERSION = "0.01";
+our $VERSION = "0.02";
 
 ##############################################################################################
 
@@ -146,8 +146,6 @@ our %LOG_LEVELS = (
     'debug'				=> 'LOG_DEBUG'
 );
 
-my $USAGE = $COMMAND." [config file] start|stop|reload|restart|status|dontfork\n";
-
 ##############################################################################################
 #                                       G L O B A L S
 ##############################################################################################
@@ -252,6 +250,18 @@ if(!defined($action) || $action eq "") {
     # Retrieve list of configuration
     # snapshots for specified device
     $res = &confsnap_list($device_name);
+
+# Show summary (list latest configuration snapshots) ?
+} elsif($action eq "summary") {
+
+    if(@ARGV) {
+	HELP_MESSAGE();
+	exit(255);
+    }
+
+    # Retrieve list of the latest
+    # configuration snapshots
+    $res = &confsnap_summary();
 
 # Show specific configuration snapshot ?
 } elsif($action eq "show") {
@@ -431,16 +441,22 @@ sub HELP_MESSAGE
 {
     print "\n";
     print "Usage:\n\n";
-    print "  ".$COMMAND." [options] fetch [device_name] [device_name_2] [device_name_3] ... [device_name_N]\n";
-    print "  ".$COMMAND." [options] list <device_name>\n";
+    print "  ".$COMMAND." [options] fetch [device_name] [device_name_2] [device_name_3] ... [device_name_N]\n\n";
     print "  ".$COMMAND." [options] show <device_name> [before|after|snapshot sel>\n";
     print "  ".$COMMAND." [options] diff <device_name> <before|after|snapshot sel1> <before|after|snapshot sel2>\n\n";
-    print "Where:\n\n";
-    print "  - device_name_* is not a hostname or an address, but a name as it appears in configuration file.\n";
-    print "  - sel* is a flexible, absolute or relative timedate string, if 'before' or 'after' clauses are used\n";
-    print "    or index into configuration history, if 'snapshot' clause is used - 'snapshot 0' being the current\n";
-    print "    configuration, 'snapshot 1' being the previous configuration, 'snapshot 2' being the configuration\n";
-    print "    before that, etc.\n\n";
+    print "  ".$COMMAND." [options] list <device_name>\n\n";
+    print "  ".$COMMAND." [options] summary\n\n";
+    print "Commands:\n\n";
+    print "  fetch        collect configurations from all or a particular set of configured devices.\n";
+    print "  show         display current or any other configuration from history for the selected device.\n";
+    print "  diff         display diff between 2 configuration snapshots for the selected device.\n";
+    print "  list         list known configuration snapshots for the selected device.\n";
+    print "  summary      show latest snapshot summary for all configured devices.\n\n";
+    print "Arguments:\n\n";
+    print "  - device_name_* is not a hostname or an IP address, but a name as it appears in the configuration file.\n";
+    print "  - sel* is either flexible, absolute or relative timedate string, if 'before' or 'after' clauses are used\n";
+    print "    or snapshot index, if 'snapshot' clause is used ('snapshot 0' is the latest snapshot, 'snapshot 1' is\n";
+    print "    the previous one, etc).\n\n";
     print "Available helper options:\n\n";
     print "  --version|-v          Show version\n";
     print "  --help|-h             Show this help message\n\n";
@@ -559,6 +575,80 @@ sub confsnap_list($)
 
     # Display retrieved list
     print STDOUT $list;
+
+    return 1;
+}
+#
+# List latest configuration snapshots for all devices
+#
+#  This function displays the summary of the latest configuration
+#  snapshots that exist in VCS repository for all devices.
+#
+#  Implements the core of "summary" command line argument.
+#
+#   Input:	nothing
+#
+#   Output:	1. TRUE, if succeeded
+#		   FALSE, if failed
+#
+sub confsnap_summary()
+{
+    return 0 unless(scalar(keys %DEVICE) > 0);
+
+    my %latest = ();
+    my $name_width = 0;
+    my $index_width = 0;
+
+    foreach my $device_name (sort keys %DEVICE) {
+	# Format path to the specified device's
+	# configuration storage directory
+	my $path = $API->device_config_path($device_name);
+	next unless(defined($path) && $path ne "");
+
+	# Retrieve the list of snapshots for specified path
+	my @list = $API->snapshot_list($path);
+	next unless(scalar(@list) > 2);
+
+	# Extract snapshot info fields
+	my ($index, $id, $date) = ($list[2] =~ /^(\d+)\s+(\S+)\s+(.+)$/);
+	# Keep info for each device
+	$latest{$device_name} = {
+	    'index' => $index,
+	    'id' => $id,
+	    'date' => $date
+	};
+
+	# Track which device's name is the longest string
+	my $len = length($device_name);
+	$name_width = $len if($name_width < $len);
+	# Track which snapshot index is the longest string
+	$len = length($index);
+	$index_width = $len if($index_width < $len);
+    }
+
+    return 0 unless(scalar(keys %latest) > 0);
+
+    # Minimum device name column width is 6 chars
+    $name_width = 6 if($name_width < 6);
+    # Add space between columns
+    $name_width += 2;
+    # Minimum snapshot index column width is 5 chars
+    $index_width = 5 if($index_width < 5);
+    # Add space between columns
+    $index_width += 2;
+
+    # Display table header
+    printf("%-".$name_width."s%-34s%-10s%s\n", "Device", "Latest snapshot date", "ID", "Index");
+    # Display table header separator
+    printf("%s\n", "=" x ($name_width + $index_width + 44));
+    # Display table rows
+    foreach my $device_name (sort keys %latest) {
+	my $device = $latest{$device_name};
+	printf("%-".$name_width."s%-34s%-10s%s\n", $device_name,
+						   $device->{'date'},
+						   $device->{'id'},
+						   $device->{'index'});
+    }
 
     return 1;
 }
