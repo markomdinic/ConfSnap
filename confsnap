@@ -597,7 +597,7 @@ sub confsnap_summary()
 
     my %latest = ();
     my $name_width = 0;
-    my $index_width = 0;
+    my $count_width = 0;
 
     foreach my $device_name (sort keys %DEVICE) {
 	# Format path to the specified device's
@@ -610,20 +610,22 @@ sub confsnap_summary()
 	next unless(scalar(@list) > 2);
 
 	# Extract snapshot info fields
-	my ($index, $id, $date) = ($list[2] =~ /^(\d+)\s+(\S+)\s+(.+)$/);
+	my ($id, $date) = ($list[2] =~ /^\d+\s+(\S+)\s+(.+)$/);
+	my $count = scalar(@list) - 2;
+
 	# Keep info for each device
 	$latest{$device_name} = {
-	    'index' => $index,
+	    'count' => $count,
+	    'date' => $date,
 	    'id' => $id,
-	    'date' => $date
 	};
 
 	# Track which device's name is the longest string
 	my $len = length($device_name);
 	$name_width = $len if($name_width < $len);
-	# Track which snapshot index is the longest string
-	$len = length($index);
-	$index_width = $len if($index_width < $len);
+	# Track which device's snapshot count is the longest string
+	$len = length($count);
+	$count_width = $len if($count_width < $len);
     }
 
     return 0 unless(scalar(keys %latest) > 0);
@@ -632,22 +634,22 @@ sub confsnap_summary()
     $name_width = 6 if($name_width < 6);
     # Add space between columns
     $name_width += 2;
-    # Minimum snapshot index column width is 5 chars
-    $index_width = 5 if($index_width < 5);
+    # Minimum snapshot count column width is 9 chars
+    $count_width = 9 if($count_width < 9);
     # Add space between columns
-    $index_width += 2;
+    $count_width += 4;
 
     # Display table header
-    printf("%-".$name_width."s%-34s%-10s%s\n", "Device", "Latest snapshot date", "ID", "Index");
+    printf("%-".$name_width."s%-".$count_width."s%-34s%-12s\n", "Device", "Snapshots", "Latest date", "Latest ID");
     # Display table header separator
-    printf("%s\n", "=" x ($name_width + $index_width + 44));
+    printf("%s\n", "=" x ($name_width + $count_width + 44));
     # Display table rows
     foreach my $device_name (sort keys %latest) {
 	my $device = $latest{$device_name};
-	printf("%-".$name_width."s%-34s%-10s%s\n", $device_name,
-						   $device->{'date'},
-						   $device->{'id'},
-						   $device->{'index'});
+	printf("%-".$name_width."s%-".$count_width."s%-34s%-12s\n", $device_name,
+								    $device->{'count'},
+								    $device->{'date'},
+								    $device->{'id'});
     }
 
     return 1;
