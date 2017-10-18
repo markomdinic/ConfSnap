@@ -18,11 +18,11 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-##############################################################################################
+###############################################################################
 
-our $VERSION = "0.02";
+our $VERSION = "0.03";
 
-##############################################################################################
+###############################################################################
 
 our ($ABSPATH, $PREFIX, $COMMAND, $LIBDIR, $SYSCONFDIR, $LOCALSTATEDIR);
 
@@ -32,9 +32,9 @@ BEGIN {
     $ABSPATH = abs_path($0);
     ($PREFIX, $COMMAND) = ($ABSPATH =~ /^(?:(.*)\/)?([^\/]+)$/);
 
-##############################################################################################
+###############################################################################
 # DEFAULT PATHS BEGIN (change if neccessary)
-##############################################################################################
+###############################################################################
 
 
     $LIBDIR = $PREFIX.'/lib';
@@ -42,45 +42,45 @@ BEGIN {
     $LOCALSTATEDIR = '/var';
 
 
-##############################################################################################
+###############################################################################
 # DEFAULT PATHS END (don't change anything below this line)
-##############################################################################################
+###############################################################################
 
 }
 
-##############################################################################################
+###############################################################################
 
 use lib $LIBDIR;
 
-##############################################################################################
+###############################################################################
 
 use strict;
 use warnings;
 
-##############################################################################################
+###############################################################################
 
 use Getopt::Std;
 use POSIX qw(:signal_h :sys_wait_h);
 use Config::ContextSensitive qw(:macros);
 
-##############################################################################################
+###############################################################################
 
 use api::base;
 use api::base::vcs;
 use api::util::event;
 
-##############################################################################################
-#                    P R E - C O N F I G U R A T I O N   D E F A U L T S
-##############################################################################################
+###############################################################################
+#          P R E - C O N F I G U R A T I O N   D E F A U L T S
+###############################################################################
 
 my %DEFAULTS = (
     'configfile'		=> $SYSCONFDIR."/confsnap.conf",
     'configdir'			=> $SYSCONFDIR
 );
 
-##############################################################################################
-#                       C O N F I G U R A T I O N   T E M P L A T E
-##############################################################################################
+###############################################################################
+#              C O N F I G U R A T I O N   T E M P L A T E
+###############################################################################
 
 my $CONF_TEMPLATE = SECTION(
     HIDDEN('configdir', ARG(CF_PATH, STORE(TO 'CONFIG', KEY 'configdir'), DEFAULT $SYSCONFDIR)),
@@ -106,9 +106,9 @@ my $CONF_TEMPLATE = SECTION(
     ))
 );
 
-##############################################################################################
-#                                     C O N S T A N T S
-##############################################################################################
+###############################################################################
+#                           C O N S T A N T S
+###############################################################################
 
 # Known syslog facilities
 our %LOG_FACILITIES = (
@@ -146,9 +146,9 @@ our %LOG_LEVELS = (
     'debug'				=> 'LOG_DEBUG'
 );
 
-##############################################################################################
-#                                       G L O B A L S
-##############################################################################################
+###############################################################################
+#                            G L O B A L S
+###############################################################################
 
 our (%OPTS, %CONFIG, %DEVICE);
 our ($API, $EV);
@@ -157,9 +157,9 @@ our ($API, $EV);
 %CONFIG = ();
 %DEVICE = ();
 
-##############################################################################################
-#                C O M M A N D   L I N E   A R G U M E N T   P A R S E R
-##############################################################################################
+###############################################################################
+#         C O M M A N D   L I N E   A R G U M E N T   P A R S E R
+###############################################################################
 
 # Display help if invoked without arguments
 unless(scalar(@ARGV)) {
@@ -192,9 +192,9 @@ my $CONFIGFILE = (defined($OPTS{'c'}) &&
 			    $OPTS{'c'}:
 			    $DEFAULTS{'configfile'};
 
-##############################################################################################
-#                    C O N F I G U R A T I O N   F I L E   P A R S E R
-##############################################################################################
+###############################################################################
+#           C O N F I G U R A T I O N   F I L E   P A R S E R
+###############################################################################
 
 # Create config template object
 our $CONF = Config::ContextSensitive->new($CONF_TEMPLATE)
@@ -208,9 +208,9 @@ $CONF->assign_destination('DEVICE', \%DEVICE);
 $CONF->load($CONFIGFILE)
     or die "Failed to load configuration file ".$CONFIGFILE."\n";
 
-##############################################################################################
-#                                         M A I N
-##############################################################################################
+###############################################################################
+#                                 M A I N
+###############################################################################
 
 # Initialize base API
 $API = api::base->new(\%CONFIG, \%DEVICE);
@@ -428,9 +428,9 @@ if(!defined($action) || $action eq "") {
 
 exit($res ? 0:255);
 
-##############################################################################################
-#                   g e t o p t s ( )   H E L P E R   F U N C T I O N S
-##############################################################################################
+###############################################################################
+#           g e t o p t s ( )   H E L P E R   F U N C T I O N S
+###############################################################################
 
 sub VERSION_MESSAGE
 {
@@ -465,9 +465,9 @@ sub HELP_MESSAGE
     print "  -d                    Enable debug\n\n";
 }
 
-##############################################################################################
-#                C O M M A N D   L I N E   A C T I O N   F U N C T I O N S
-##############################################################################################
+###############################################################################
+#         C O M M A N D   L I N E   A C T I O N   F U N C T I O N S
+###############################################################################
 
 #
 # Retrieve device configuration
@@ -579,9 +579,9 @@ sub confsnap_list($)
     return 1;
 }
 #
-# List latest configuration snapshots for all devices
+# Show configuration snapshot summary for all devices
 #
-#  This function displays the summary of the latest configuration
+#  This function displays the summary of configuration
 #  snapshots that exist in VCS repository for all devices.
 #
 #  Implements the core of "summary" command line argument.
@@ -797,9 +797,9 @@ sub confsnap_diff($$$)
     return 1;
 }
 
-##############################################################################################
-#               C O R E   C O D E   -   A C T U A L   F U N C T I O N A L I T Y
-##############################################################################################
+###############################################################################
+#                            C O R E   C O D E
+###############################################################################
 
 #
 # Retrieve devices' configurations
@@ -831,6 +831,8 @@ sub fetch_device_config($$)
     my $commit_message = "";
     my $message;
 
+    my $res;
+
     # Get next device
     my $device_name = shift @{$devices};
     # We are done if there is no more devices to backup
@@ -844,45 +846,79 @@ sub fetch_device_config($$)
     # when processing PE device they are connected to
     return 1 if(defined($device->{'vrf'}));
 
+    my $timeout = defined($device->{'timeout'}) ?
+				$device->{'timeout'}:
+				$CONFIG{'method_timeout'};
+
     $API->logging('LOG_INFO', "Retrieving configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
 
     # Connect to the device
-    my $conn = $device->connect($device->{'host'});
-    return 1 unless defined($conn);
+    my $conn = $EV->invoke_handler('handler' => $device->can('connect'),
+				   'args' => [ $device, $device->{'host'} ],
+				   'timeout' => $timeout,
+				   'on_timeout' => sub {
+					$API->logging('LOG_DEBUG', "Timed out while attempting to connect to ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+					return undef;
+				   });
+
+    unless(defined($conn)) {
+	$API->logging('LOG_ERR', "Failed to connect to ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+	return 1;
+    }
+
     # If device requires a specific prompt,
     # this method should be defined
-    my $prompt_func = $device->can('prompt');
-    if(defined($prompt_func)) {
+    my $method_prompt = $device->can('prompt');
+    if(defined($method_prompt)) {
 	# Expect device-specific prompt
-	$device->prompt($conn);
-	$API->logging('LOG_DEBUG', "Using device type specific prompt for ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+	$res = $EV->invoke_handler('handler' => $method_prompt,
+				   'args' => [ $device, $conn ],
+				   'timeout' => $timeout,
+				   'on_timeout' => sub {
+					$API->logging('LOG_DEBUG', "Timed out while attempting to set device-specific prompt on ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+					return 0;
+				   });
+	
+	$API->logging('LOG_DEBUG', "Using device type specific prompt for ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]") unless(defined($res) && !$res);
     }
+
     # If device requires authentication,
     # this method should be defined
-    my $auth_func = $device->can('auth');
-    if(defined($auth_func)) {
+    my $method_auth = $device->can('auth');
+    if(defined($method_auth)) {
 	# Authenticate to our device
-	if($device->auth($conn)) {
+	if($EV->invoke_handler('handler' => $method_auth,
+			       'args' => [ $device, $conn ],
+			       'timeout' => $timeout,
+			       'on_timeout' => sub {
+				    $API->logging('LOG_DEBUG', "Timed out while attempting to authenticate to ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+			       })) {
 	    $API->logging('LOG_DEBUG', "Authenticated to ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
 	} else {
-	    $API->logging('LOG_DEBUG', "Failed to authenticate to ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+	    $API->logging('LOG_ERR', "Failed to authenticate to ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
 	    return 1;
 	}
     }
 
     # Collect device configuration
-    my $device_config = $device->collect($conn);
+    my $device_config = $EV->invoke_handler('handler' => $device->can('collect'),
+					    'args' => [ $device, $conn ],
+					    'timeout' => $timeout,
+					    'on_timeout' => sub {
+						$API->logging('LOG_DEBUG', "Timed out while attempting to collect configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+						return undef;
+					    });
 
     if(defined($device_config) && $device_config ne "") {
 	$API->logging('LOG_DEBUG', "Collected configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
     } else {
-	$API->logging('LOG_DEBUG', "Failed to collect configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+	$API->logging('LOG_ERR', "Failed to collect configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
 	return 1;
     }
 
     # Can this device type connect to a remote device ?
-    my $remote_func = $device->can('remote');
-    if(defined($remote_func)) {
+    my $method_remote = $device->can('remote');
+    if(defined($method_remote)) {
 	# If device has VRFs configured ...
 	if(defined($device->{'vrfs'})) {
 	    $API->logging('LOG_DEBUG', "Device ".$device_name." [".$device->{'host'}."] has configured VRFs");
@@ -902,8 +938,8 @@ sub fetch_device_config($$)
 
 		    # Remote device type's module must implement 'end' method,
 		    # otherwise we won't be able do detach once we are done
-		    my $end_func = $remote->can('end');
-		    unless(defined($end_func)) {
+		    my $method_remote_end = $remote->can('end');
+		    unless(defined($method_remote_end)) {
 			$API->logging('LOG_DEBUG', "Device module \"".$remote->{'type'}."\" used by remote device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."] doesn't implement required method end()");
 			next;
 		    }
@@ -911,23 +947,41 @@ sub fetch_device_config($$)
 		    $API->logging('LOG_INFO', "Retrieving configuration from remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
 
 		    # Connect from our device to the device on the remote end
-		    $device->remote($conn, $remote->{'host'}, $vrf);
+		    $res = $EV->invoke_handler('handler' => $method_remote,
+					       'args' => [ $device, $conn, $remote->{'host'}, $vrf ],
+					       'timeout' => $timeout,
+					       'on_timeout' => sub {
+						    $API->logging('LOG_DEBUG', "Timed out while attempting to connect to remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+						    return 0;
+					       });
 
-		    $API->logging('LOG_DEBUG', "Connected to remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+		    $API->logging('LOG_DEBUG', "Connected to remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]") unless(defined($res) && !$res);
 
 		    # Does remote device require some specific prompt ?
-		    my $prompt_func = $remote->can('prompt');
-		    if(defined($prompt_func)) {
+		    my $method_remote_prompt = $remote->can('prompt');
+		    if(defined($method_remote_prompt)) {
 			# Expect remote device's prompt
-			$remote->prompt($conn);
-			$API->logging('LOG_DEBUG', "Using device type specific prompt for remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+			$res = $EV->invoke_handler('handler' => $method_remote_prompt,
+						   'args' => [ $remote, $conn ],
+						   'timeout' => $timeout,
+						   'on_timeout' => sub {
+							$API->logging('LOG_DEBUG', "Timed out while attempting to set device-specific prompt on remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+							return 0;
+						   });
+
+			$API->logging('LOG_DEBUG', "Using device type specific prompt for remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]") unless(defined($res) && !$res);
 		    }
 
 		    # Does remote device require authentication ?
-		    my $auth_func = $remote->can('auth');
-		    if(defined($auth_func)) {
+		    my $method_remote_auth = $remote->can('auth');
+		    if(defined($method_remote_auth)) {
 			# Authenticate to the remote device
-			if($remote->auth($conn)) {
+			if($EV->invoke_handler('handler' => $method_remote_auth,
+					       'args' => [ $remote, $conn ],
+					       'timeout' => $timeout,
+					       'on_timeout' => sub {
+						    $API->logging('LOG_DEBUG', "Timed out while attempting to authenticate to remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+					       })) {
 			    $API->logging('LOG_DEBUG', "Authenticated to remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
 			} else {
 			    $API->logging('LOG_DEBUG', "Failed to authenticate to remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
@@ -936,7 +990,13 @@ sub fetch_device_config($$)
 		    }
 
 		    # Collect remote device's configuration
-		    my $remote_config = $remote->collect($conn);
+		    my $remote_config = $EV->invoke_handler('handler' => $remote->can('collect'),
+							    'args' => [ $remote, $conn ],
+							    'timeout' => $timeout,
+							    'on_timeout' => sub {
+								$API->logging('LOG_DEBUG', "Timed out while attempting to collect configuration from remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+								return undef;
+							    });
 
 		    if(defined($remote_config) && $remote_config ne "") {
 			$API->logging('LOG_DEBUG', "Collected configuration from remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
@@ -945,15 +1005,28 @@ sub fetch_device_config($$)
 		    }
 
 		    # Restore our device's prompt
-		    if(defined($prompt_func)) {
-			$device->prompt($conn);
-			$API->logging('LOG_DEBUG', "Restored device type specific prompt for ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+		    if(defined($method_prompt)) {
+			$res = $EV->invoke_handler('handler' => $method_prompt,
+						   'args' => [ $device, $conn ],
+						   'timeout' => $timeout,
+						   'on_timeout' => sub {
+							$API->logging('LOG_DEBUG', "Timed out while attempting to restore device-specific prompt on ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+							return 0;
+						   });
+
+			$API->logging('LOG_DEBUG', "Restored device type specific prompt for ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]") unless(defined($res) && !$res);
 		    }
 
 		    # Close connection to the remote device
-		    $remote->end($conn);
+		    $res = $EV->invoke_handler('handler' => $method_remote_end,
+					       'args' => [ $remote, $conn ],
+					       'timeout' => $timeout,
+					       'on_timeout' => sub {
+						    $API->logging('LOG_DEBUG', "Timed out while attempting to disconnect from remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+						    return 0;
+					       });
 
-		    $API->logging('LOG_DEBUG', "Disconnected from remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+		    $API->logging('LOG_DEBUG', "Disconnected from remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]") unless(defined($res) && !$res);
 
 		    # If configuration was collected from the remote device ...
 		    if(defined($remote_config) && $remote_config ne "") {
@@ -968,14 +1041,24 @@ sub fetch_device_config($$)
     }
 
     # Disconnect from our device
-    $device->disconnect($conn);
+    $res = $EV->invoke_handler('handler' => $device->can('disconnect'),
+			       'args' => [ $device, $conn ],
+			       'timeout' => $timeout,
+			       'on_timeout' => sub {
+				    $API->logging('LOG_DEBUG', "Timed out while attempting to disconnect from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+				    return 0;
+				});
 
-    $API->logging('LOG_DEBUG', "Disconnected from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+    $API->logging('LOG_DEBUG', "Disconnected from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]") unless(defined($res) && !$res);
 
     # Store collected configuration
-    my $res = $API->store_device_config($device_name, $device_config);
+    $res = $API->store_device_config($device_name, $device_config);
 
-    $API->logging('LOG_DEBUG', "Stored configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]") if($res);
+    if($res) {
+	$API->logging('LOG_DEBUG', "Stored configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+    } else {
+	$API->logging('LOG_ERR', "Failed to store configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+    }
 
     return $res;
 }
@@ -1103,9 +1186,9 @@ sub load_device_module($$$$$$$)
     return (1, $conf_template);
 }
 
-##############################################################################################
-#                                  A P I   F U N C T I O N S
-##############################################################################################
+###############################################################################
+#                        A P I   F U N C T I O N S
+###############################################################################
 
 #
 # Return base file name of this application
