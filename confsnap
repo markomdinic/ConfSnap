@@ -74,8 +74,8 @@ use api::util::event;
 ##############################################################################################
 
 my %DEFAULTS = (
-    'configfile'		=> "/opt/confsnap/etc/confsnap.conf",
-    'configdir'			=> "/opt/confsnap/etc",
+    'configfile'		=> $SYSCONFDIR."/confsnap.conf",
+    'configdir'			=> $SYSCONFDIR
 );
 
 ##############################################################################################
