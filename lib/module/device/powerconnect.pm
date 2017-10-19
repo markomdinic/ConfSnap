@@ -78,7 +78,7 @@ sub prompt($$)
 
 sub auth($$)
 {
-    my ($self, $conn, $user, $pass, $enable) = @_;
+    my ($self, $conn) = @_;
 
     # At least password must be defined
     my $pass = $self->{'password'};
@@ -88,12 +88,12 @@ sub auth($$)
     my $user = $self->{'username'};
     # Send username, if defined
     if(defined($user) && $user ne "") {
-	$conn->waitfor('/[Uu]sername:/');
+	$conn->waitfor('/[Uu]ser(?:name)?:/');
 	$conn->put($user."\n");
     }
 
     # Send password
-    $conn->waitfor('/[Pp]assword:/');
+    $conn->waitfor('/[Pp]ass(?:word)?:/');
     $conn->cmd($pass);
 
     # Get enable password

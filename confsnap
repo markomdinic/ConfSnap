@@ -20,7 +20,7 @@
 
 ###############################################################################
 
-our $VERSION = "0.03";
+our $VERSION = "0.04";
 
 ###############################################################################
 
@@ -493,7 +493,7 @@ sub confsnap_fetch(;@)
 	return 0;
     }
 
-    $API->logging('LOG_DEBUG', $CONF->show_config());
+    $API->logging('LOG_DEBUG', "ConfSnap configuration:\n".$CONF->show_config());
 
     # Create module instance for each configured device
     # and retrieve the list of instantiated device hosts
