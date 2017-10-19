@@ -42,7 +42,8 @@ our @ISA = qw(api::module);
 our $CONF_TEMPLATE = SECTION(
     DIRECTIVE('timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'timeout' => '$VALUE' } }), DEFAULT '10')),
     DIRECTIVE('username', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'username' => '$VALUE' } }))),
-    DIRECTIVE('password', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'password' => '$VALUE' } })))
+    DIRECTIVE('password', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'password' => '$VALUE' } }))),
+    DIRECTIVE('filter', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'filter' => '$VALUE' } })))
 );
 
 ##############################################################################################
@@ -99,8 +100,14 @@ sub collect($$)
     $conn->cmd("terminal length 0");
     # Collect running config
     my @cfg = $conn->cmd("show running-conf");
+    # Skip leading trash
     while((my $l = shift @cfg)) {
 	last if($l =~ /^[Bb]uilding configuration/);
+    }
+    # If filter regexp is defined ...
+    if(defined($self->{'filter'}) && $self->{'filter'} ne "") {
+	# ... remove all matching lines
+	@cfg = grep(!/$self->{'filter'}/, @cfg);
     }
     # If we got config, return it as string.
     # Otherwise, return undef

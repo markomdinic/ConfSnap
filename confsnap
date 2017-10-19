@@ -20,7 +20,7 @@
 
 ###############################################################################
 
-our $VERSION = "0.04";
+our $VERSION = "0.05";
 
 ###############################################################################
 
@@ -911,8 +911,11 @@ sub fetch_device_config($$)
 
     if(defined($device_config) && $device_config ne "") {
 	$API->logging('LOG_DEBUG', "Collected configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+	# Replace CRLFs with newlines
+	$device_config =~ s/\n\r+|\r+\n/\n/g;
     } else {
 	$API->logging('LOG_ERR', "Failed to collect configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+	# End processing this device
 	return 1;
     }
 
@@ -985,6 +988,7 @@ sub fetch_device_config($$)
 			    $API->logging('LOG_DEBUG', "Authenticated to remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
 			} else {
 			    $API->logging('LOG_DEBUG', "Failed to authenticate to remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+			    # Skip to the next remote device
 			    next;
 			}
 		    }
@@ -1000,8 +1004,10 @@ sub fetch_device_config($$)
 
 		    if(defined($remote_config) && $remote_config ne "") {
 			$API->logging('LOG_DEBUG', "Collected configuration from remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+			# Replace CRLFs with newlines
+			$remote_config =~ s/\n\r+|\r+\n/\n/g;
 		    } else {
-			$API->logging('LOG_DEBUG', "Failed to collec configuration from remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
+			$API->logging('LOG_DEBUG', "Failed to collect configuration from remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
 		    }
 
 		    # Restore our device's prompt

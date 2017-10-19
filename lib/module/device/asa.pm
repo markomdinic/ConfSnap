@@ -47,7 +47,8 @@ our $CONF_TEMPLATE = SECTION(
     DIRECTIVE('protocol', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'protocol' => '$VALUE' } }), DEFAULT 'ssh')),
     DIRECTIVE('username', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'username' => '$VALUE' } }))),
     DIRECTIVE('password', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'password' => '$VALUE' } }))),
-    DIRECTIVE('enable', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'enable' => '$VALUE' } })))
+    DIRECTIVE('enable', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'enable' => '$VALUE' } }))),
+    DIRECTIVE('filter', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'filter' => '$VALUE' } })))
 );
 
 ##############################################################################################
@@ -171,6 +172,11 @@ sub collect($$)
 	# Skip trailing trash
 	while((my $l = pop @cfg)) {
 	    last if($l =~ /^Cryptochecksum:/);
+	}
+	# If filter regexp is defined ...
+	if(defined($self->{'filter'}) && $self->{'filter'} ne "") {
+	    # ... remove all matching lines
+	    @cfg = grep(!/$self->{'filter'}/, @cfg);
 	}
     }
     # If we got config, return it as string.

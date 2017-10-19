@@ -8,13 +8,13 @@
 log_to_syslog		yes
 log_to_console		yes
 syslog_facility		local7
-syslog_level		debug
+syslog_level		info
 
 # Default module methods' timeout
 method_timeout		10
 module_timeout		60
 
-repository_datadir	/tmp/confbackup
+repository_datadir	/opt/confsnap/repository
 remote_repository_url	git@git.your.network:configurations/network-device-configurations.git
 
 colorize_output		yes
@@ -42,6 +42,9 @@ device switch1 host switch1.your.network type force10
 
 device switch2 host switch2.your.network type force10
  include_file	"/opt/confsnap/etc/devices/force10.conf"
+
+device switch3 host switch3.your.network type powerconnect
+ include_file	"/opt/confsnap/etc/devices/powerconnect.conf"
 
 device customer1 host 172.30.151.11 type ios in vrf CPE-MANAGEMENT-VRF on router2
  password	customerpass
