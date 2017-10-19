@@ -414,7 +414,7 @@ sub list($;$@)
 
     $index = 0 unless(defined($index) && $index =~ /^\d+$/ && $index >= 0);
 
-    my $list = $self->git('rev-list', '--skip', $index, 'master', '--', @_);
+    my $list = $self->git('rev-list', '--skip='.$index, 'master', '--', @_);
 
     return wantarray ? ((defined($list) && $list ne "") ? split(/[\n\r]+/, $list):()):$list;
 }
@@ -441,7 +441,7 @@ sub list_before($$;@)
 
     return 0 unless(defined($time) && $time ne "");
 
-    my $list = $self->git('rev-list', '--before', $time, 'master', '--', @_);
+    my $list = $self->git('rev-list', '--before='.$time, 'master', '--', @_);
 
     return wantarray ? ((defined($list) && $list ne "") ? split(/[\n\r]+/, $list):()):$list;
 }
@@ -468,7 +468,7 @@ sub list_after($$)
 
     return 0 unless(defined($time) && $time ne "");
 
-    my $list = $self->git('rev-list', '--after', $time, 'master', '--', @_);
+    my $list = $self->git('rev-list', '--after='.$time, 'master', '--', @_);
 
     return wantarray ? ((defined($list) && $list ne "") ? split(/[\n\r]+/, $list):()):$list;
 }
