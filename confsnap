@@ -20,7 +20,7 @@
 
 ###############################################################################
 
-our $VERSION = "0.05";
+our $VERSION = "0.1";
 
 ###############################################################################
 
@@ -98,7 +98,9 @@ my $CONF_TEMPLATE = SECTION(
 	    DIRECTIVE('type', ARG(CF_STRING|CF_SECTION, POSTPARSER(&load_device_module), STORE(TO 'DEVICE', KEY { '$NESTED_SECTION' => { 'type' => '$VALUE' } })), OPTIONAL(
 		DIRECTIVE('in', REQUIRE(
 		    DIRECTIVE('vrf', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$NESTED_SECTION' => { 'vrf' => '$VALUE' } })), REQUIRE(
-			DIRECTIVE('on', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$VALUE' => { 'vrfs' => { '$ARG[8]' => [ '$NESTED_SECTION' ] } } })))
+			DIRECTIVE('on', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$VALUE' => { 'vrfs' => { '$ARG[8]' => [ '$NESTED_SECTION' ] } } }),
+						       STORE(TO 'DEVICE', KEY { '$NESTED_SECTION' => { 'parent' => '$VALUE' } })
+			))
 		    ))
 		))
 	    ))
@@ -497,7 +499,7 @@ sub confsnap_fetch(;@)
 
     # Create module instance for each configured device
     # and retrieve the list of instantiated device hosts
-    my $devices = &instantiate_devices(@_);
+    my $devices = &instantiate_devices();
     unless(defined($devices) && ref($devices) eq "ARRAY" && scalar(@{$devices}) > 0) {
 	print STDERR "Failed to instantiate devices.\n";
 	return 0;
@@ -840,11 +842,17 @@ sub fetch_device_config($$)
 
     # Get device object reference
     my $device = $DEVICE{$device_name};
-    return 1 unless defined($device);
+    unless(defined($device)) {
+	$API->logging('LOG_DEBUG', "Snapshot creation for device ".$device_name." [".$device->{'host'}."] is not configured properly");
+	return 1;
+    }
 
     # Ignore devices in VRFs - we are going to process them
     # when processing PE device they are connected to
-    return 1 if(defined($device->{'vrf'}));
+    if(defined($device->{'vrf'})) {
+	$API->logging('LOG_DEBUG', "Skipping remote ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."] in vrf ".$device->{'vrf'}." on ".$device->{'parent'}.": processed along with it's parent device");
+	return 1;
+    }
 
     my $timeout = defined($device->{'timeout'}) ?
 				$device->{'timeout'}:
@@ -935,7 +943,7 @@ sub fetch_device_config($$)
 		    # Get the remote device object reference
 		    my $remote = $DEVICE{$remote_name};
 		    unless(defined($remote)) {
-			$API->logging('LOG_DEBUG', "Remote device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."] is missing configuration");
+			$API->logging('LOG_DEBUG', "Snapshot creation for remote device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."] is not configured properly");
 			next;
 		    }
 
