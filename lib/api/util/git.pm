@@ -365,6 +365,23 @@ sub log($;@)
     return wantarray ? ((defined($log) && $log ne "") ? split(/[\n\r]+/, $log):()):$log;
 }
 #
+# git show (-s --format=%ct)
+#
+#  This method returns given commit's timestamp.
+#
+#   Input:	1. self object reference (passed implicitly)
+#		2. commit ID
+#
+#   Output:	1. commit's timestamp,
+#		   undef, if failed
+#
+sub timestamp($$)
+{
+    my ($self, $commit) = @_;
+
+    return $self->git('show', '-s', '--format=%ct', $commit);
+}
+#
 # git diff
 #
 #  This method returns diff between

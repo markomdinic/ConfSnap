@@ -20,7 +20,7 @@
 
 ###############################################################################
 
-our $VERSION = "0.1";
+our $VERSION = "0.1.1";
 
 ###############################################################################
 
@@ -60,6 +60,7 @@ use warnings;
 ###############################################################################
 
 use Getopt::Std;
+use Time::ParseDate;
 use POSIX qw(:signal_h :sys_wait_h);
 use Config::ContextSensitive qw(:macros);
 
@@ -340,12 +341,8 @@ if(!defined($action) || $action eq "") {
 
     my $device_name = shift @ARGV;
 
-    my @snapshot_descriptions = ();
-    my @description_formatters = $CONFIG{'colorize_output'} ?
-				    ("\033[01;31m%s (---)\033[00m", "\033[01;32m%s (+++)\033[00m"):
-				    ("%s (---)", "%s (+++)");
-
-    my @diff_args = ();
+    my @snapshots = ();
+    my @selectors = ();
 
     for(1..2) {
 
@@ -364,8 +361,6 @@ if(!defined($action) || $action eq "") {
 	    exit(255);
 	}
 
-	my $description_fmt = shift @description_formatters;
-
 	my $snapshot;
 
 	if($clause eq "snapshot") {
@@ -378,7 +373,7 @@ if(!defined($action) || $action eq "") {
 		exit(255);
 	    }
 
-	    push @snapshot_descriptions, sprintf($description_fmt, "at index ".$selector);
+	    unshift @selectors, "at index ".$selector;
 
 	} elsif($clause eq "before") {
 
@@ -389,7 +384,7 @@ if(!defined($action) || $action eq "") {
 		exit(255);
 	    }
 
-	    push @snapshot_descriptions, sprintf($description_fmt, "before \"".$selector."\"");
+	    unshift @selectors, "before \"".$selector."\"";
 
 	} elsif($clause eq "after") {
 
@@ -400,7 +395,7 @@ if(!defined($action) || $action eq "") {
 		exit(255);
 	    }
 
-	    push @snapshot_descriptions, sprintf($description_fmt, "after \"".$selector."\"");
+	    unshift @selectors, "after \"".$selector."\"";
 
 	} else {
 
@@ -408,16 +403,23 @@ if(!defined($action) || $action eq "") {
 
 	}
 
-	# Add configuration snapshot id (hash)
-	# to the list arguments for diff
-	push @diff_args, $snapshot;
+	push @snapshots, $snapshot;
 
     }
 
-    print STDOUT "\nComparing device configuration snapshot ".join(' to snapshot ', @snapshot_descriptions)."\n\n";
+    if($API->snapshot_timestamp($snapshots[1]) < $API->snapshot_timestamp($snapshots[0])) {
+	@snapshots = reverse @snapshots;
+	@selectors = reverse @selectors;
+    }
+
+    printf STDOUT "\nComparing device configuration snapshot ".
+		  ($CONFIG{'colorize_output'} ?
+			"\033[01;32m%s (+++)\033[00m to snapshot \033[01;31m%s (---)\033[00m\n\n":
+			"%s (+++) to snapshot %s (---)\n\n"),
+		  @selectors;
 
     # Make a diff between 2 configuration snapshots
-    $res = &confsnap_diff($device_name, @diff_args);
+    $res = &confsnap_diff($device_name, @snapshots);
 
 # Unknown operation
 } else {
@@ -498,12 +500,12 @@ sub confsnap_fetch(;@)
     $API->logging('LOG_DEBUG', "ConfSnap configuration:\n".$CONF->show_config());
 
     # Create module instance for each configured device
-    # and retrieve the list of instantiated device hosts
-    my $devices = &instantiate_devices();
-    unless(defined($devices) && ref($devices) eq "ARRAY" && scalar(@{$devices}) > 0) {
+    unless(&instantiate_devices()) {
 	print STDERR "Failed to instantiate devices.\n";
 	return 0;
     }
+
+    my $devices = (scalar(@_) > 0) ? \@_:[keys %DEVICE];
 
     # Create recurring event that will fetch device configs,
     # giving it's handler the list of devices to be backed up
@@ -1091,9 +1093,8 @@ sub fetch_device_config($$)
 #   Input:	1+ (optional) device names, as they appear
 #		   in our config file.
 #
-#   Output:	1. reference to the array of device names
-#		   of instantiated devices,
-#		   undef, if failed.
+#   Output:	1. TRUE, if suceeded
+#		   FALSE, if failed
 #
 sub instantiate_devices(;@)
 {
@@ -1109,7 +1110,7 @@ sub instantiate_devices(;@)
 	my $device = $DEVICE{$device_name};
 	unless(defined($device)) {
 	    print STDERR "Unknown device ".$device_name." requested.\n";
-	    return undef;
+	    return 0;
 	}
 	# Every configured device should be of type
 	# that matches one of available modules
@@ -1118,10 +1119,10 @@ sub instantiate_devices(;@)
 	# the device type from the device's backup
 	# parameters hash
 	my $res = $modclass->instantiate($device);
-	return undef unless defined($res);
+	return 0 unless defined($res);
     }
 
-    return $devices;
+    return 1;
 }
 #
 # Load device module

@@ -460,6 +460,33 @@ sub snapshot_after($$;@)
     return $snapshot;
 }
 #
+# Get snapshot's timestamp
+#
+#  This method returns the date and time the specified
+#  snapshot was taken, in UNIX timestamp format.
+#
+#   Input:	1. self object reference
+#		2. snapshot ID
+#
+#   Output:	1. UNIX timestamp
+#		   undef, if failed
+#
+sub snapshot_timestamp($$)
+{
+    my ($self, $snapshot) = @_;
+
+    # Change to repo dir
+    my $wd = $self->cd();
+
+    # Get snapshot's (commit's) timestamp
+    my $timestamp = $self->{'git'}->timestamp($snapshot);
+
+    # Change back to prev dir
+    chdir($wd);
+
+    return $timestamp;
+}
+#
 # Retrieve the list of snapshots present in VCS repository
 #
 #  This method retrieves the list of snapshots kept in repository.
