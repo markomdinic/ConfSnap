@@ -20,7 +20,7 @@
 
 ###############################################################################
 
-our $VERSION = "0.1.2";
+our $VERSION = "0.1.3";
 
 ###############################################################################
 
@@ -244,7 +244,7 @@ if(!defined($action) || $action eq "") {
     exit(255);
 
 # Retrieve configuration ?
-} elsif($action =~ "f(e(t(ch?)?)?)?") {
+} elsif($action =~ /^f(?:e(?:t(?:ch?)?)?)?$/) {
 
     # Grab and store configurations from
     #  - a single configured device
@@ -253,7 +253,7 @@ if(!defined($action) || $action eq "") {
     $res = &confsnap_fetch(@ARGV);
 
 # List configuration snapshots ?
-} elsif($action =~ "l(i(st?)?)?") {
+} elsif($action =~ /^l(?:i(?:st?)?)?$/) {
 
     my $device_name = shift @ARGV;
     unless(defined($device_name) && $device_name ne "") {
@@ -267,7 +267,7 @@ if(!defined($action) || $action eq "") {
     $res = &confsnap_list($device_name);
 
 # Show summary (list latest configuration snapshots) ?
-} elsif($action =~ "su(m(m(a(ry?)?)?)?)?") {
+} elsif($action =~ /^su(?:m(?:m(?:a(?:ry?)?)?)?)?$/) {
 
     if(@ARGV) {
 	HELP_MESSAGE();
@@ -279,7 +279,7 @@ if(!defined($action) || $action eq "") {
     $res = &confsnap_summary();
 
 # Show specific configuration snapshot ?
-} elsif($action =~ "sh(ow?)?") {
+} elsif($action =~ /^sh(?:ow?)?$/) {
 
     unless(scalar(@ARGV) > 0) {
 	print STDERR "At least device name must be specified. Try help:\n";
@@ -307,7 +307,7 @@ if(!defined($action) || $action eq "") {
 	die "Invalid configuration snapshot path\n" unless(defined($path) && $path ne "");
 
 	# Refer to the exact snapshot by index
-	if($clause eq "snapshot") {
+	if($clause =~ /^s(?:n(?:a(?:p(?:s(?:h(?:ot?)?)?)?)?)?)?$/) {
 
 	    die "Invalid snapshot index \"".$selector."\" specified.\n" unless($selector =~ /^\d+$/);
 
@@ -318,7 +318,7 @@ if(!defined($action) || $action eq "") {
 	    }
 
 	# Refer to the first snapshot at or BEFORE specified time
-	} elsif($clause eq "before") {
+	} elsif($clause =~ /^b(?:e(?:f(?:o(?:re?)?)?)?)?$/) {
 
 	    $snapshot = $API->snapshot_before($selector, $path);
 	    unless(defined($snapshot) && $snapshot ne "") {
@@ -327,7 +327,7 @@ if(!defined($action) || $action eq "") {
 	    }
 
 	# Refer to the first snapshot at or AFTER specified time
-	} elsif($clause eq "after") {
+	} elsif($clause =~ /^a(?:f(?:t(?:er?)?)?)?$/) {
 
 	    $snapshot = $API->snapshot_after($selector, $path);
 	    unless(defined($snapshot) && $snapshot ne "") {
@@ -349,7 +349,7 @@ if(!defined($action) || $action eq "") {
     $res = &confsnap_show($device_name, $snapshot);
 
 # Show diff between 2 configuration snapshots ?
-} elsif($action =~ "d(i(ff?)?)?") {
+} elsif($action =~ /^d(?:i(?:ff?)?)?$/) {
 
     my $device_name = shift @ARGV;
 
@@ -375,7 +375,7 @@ if(!defined($action) || $action eq "") {
 
 	my $snapshot;
 
-	if($clause =~ "s(n(a(p(s(h(ot?)?)?)?)?)?)?") {
+	if($clause =~ /^s(?:n(?:a(?:p(?:s(?:h(?:ot?)?)?)?)?)?)?$/) {
 
 	    die "Invalid snapshot index \"".$selector."\" specified.\n" unless($selector =~ /^\d+$/);
 
@@ -387,7 +387,7 @@ if(!defined($action) || $action eq "") {
 
 	    unshift @selectors, "at index ".$selector;
 
-	} elsif($clause =~ "b(e(f(o(re?)?)?)?)?") {
+	} elsif($clause =~ /^b(?:e(?:f(?:o(?:re?)?)?)?)?$/) {
 
 	    # Get id (hash) for shapshot before this datetime
 	    $snapshot = $API->snapshot_before($selector);
@@ -398,7 +398,7 @@ if(!defined($action) || $action eq "") {
 
 	    unshift @selectors, "before \"".$selector."\"";
 
-	} elsif($clause =~ "a(f(t(er?)?)?)?") {
+	} elsif($clause =~ /^a(?:f(?:t(?:er?)?)?)?$/) {
 
 	    # Get id (hash) for shapshot after this datetime
 	    $snapshot = $API->snapshot_after($selector);
