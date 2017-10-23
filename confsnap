@@ -20,7 +20,7 @@
 
 ###############################################################################
 
-our $VERSION = "0.1.1";
+our $VERSION = "0.1.2";
 
 ###############################################################################
 
@@ -164,6 +164,7 @@ our ($API, $EV);
 #         C O M M A N D   L I N E   A R G U M E N T   P A R S E R
 ###############################################################################
 
+
 # Display help if invoked without arguments
 unless(scalar(@ARGV)) {
     VERSION_MESSAGE();
@@ -199,6 +200,14 @@ my $CONFIGFILE = (defined($OPTS{'c'}) &&
 #           C O N F I G U R A T I O N   F I L E   P A R S E R
 ###############################################################################
 
+# If we can determine the absolute path
+# of the configuration file ...
+if(abs_path($CONFIGFILE) =~ /^(?:(.*)\/)?[^\/]+$/) {
+    # ... move to config dir before loading
+    # and parsing main configuration
+    chdir($1) 
+}
+
 # Create config template object
 our $CONF = Config::ContextSensitive->new($CONF_TEMPLATE)
     or die "Failed to initialize configuraton template\n";
@@ -207,13 +216,16 @@ our $CONF = Config::ContextSensitive->new($CONF_TEMPLATE)
 $CONF->assign_destination('CONFIG', \%CONFIG);
 $CONF->assign_destination('DEVICE', \%DEVICE);
 
-# Load configuration file
+# Load and parse configuration file
 $CONF->load($CONFIGFILE)
     or die "Failed to load configuration file ".$CONFIGFILE."\n";
 
 ###############################################################################
 #                                 M A I N
 ###############################################################################
+
+# Move to our base dir
+chdir(abs_path($PREFIX));
 
 # Initialize base API
 $API = api::base->new(\%CONFIG, \%DEVICE);
@@ -232,7 +244,7 @@ if(!defined($action) || $action eq "") {
     exit(255);
 
 # Retrieve configuration ?
-} elsif($action eq "fetch") {
+} elsif($action =~ "f(e(t(ch?)?)?)?") {
 
     # Grab and store configurations from
     #  - a single configured device
@@ -241,7 +253,7 @@ if(!defined($action) || $action eq "") {
     $res = &confsnap_fetch(@ARGV);
 
 # List configuration snapshots ?
-} elsif($action eq "list") {
+} elsif($action =~ "l(i(st?)?)?") {
 
     my $device_name = shift @ARGV;
     unless(defined($device_name) && $device_name ne "") {
@@ -255,7 +267,7 @@ if(!defined($action) || $action eq "") {
     $res = &confsnap_list($device_name);
 
 # Show summary (list latest configuration snapshots) ?
-} elsif($action eq "summary") {
+} elsif($action =~ "su(m(m(a(ry?)?)?)?)?") {
 
     if(@ARGV) {
 	HELP_MESSAGE();
@@ -267,7 +279,7 @@ if(!defined($action) || $action eq "") {
     $res = &confsnap_summary();
 
 # Show specific configuration snapshot ?
-} elsif($action eq "show") {
+} elsif($action =~ "sh(ow?)?") {
 
     unless(scalar(@ARGV) > 0) {
 	print STDERR "At least device name must be specified. Try help:\n";
@@ -337,7 +349,7 @@ if(!defined($action) || $action eq "") {
     $res = &confsnap_show($device_name, $snapshot);
 
 # Show diff between 2 configuration snapshots ?
-} elsif($action eq "diff") {
+} elsif($action =~ "d(i(ff?)?)?") {
 
     my $device_name = shift @ARGV;
 
@@ -363,34 +375,34 @@ if(!defined($action) || $action eq "") {
 
 	my $snapshot;
 
-	if($clause eq "snapshot") {
+	if($clause =~ "s(n(a(p(s(h(ot?)?)?)?)?)?)?") {
 
 	    die "Invalid snapshot index \"".$selector."\" specified.\n" unless($selector =~ /^\d+$/);
 
 	    $snapshot = $API->snapshot_at($selector);
-	    unless(defined($snapshot) && $snapshot ne "") {
+	    unless($snapshot) {
 		print STDERR "No snapshot found at index ".$selector."\n";
 		exit(255);
 	    }
 
 	    unshift @selectors, "at index ".$selector;
 
-	} elsif($clause eq "before") {
+	} elsif($clause =~ "b(e(f(o(re?)?)?)?)?") {
 
 	    # Get id (hash) for shapshot before this datetime
 	    $snapshot = $API->snapshot_before($selector);
-	    unless(defined($snapshot) && $snapshot ne "") {
+	    unless($snapshot) {
 		print STDERR "No snapshot found before ".$selector."\n";
 		exit(255);
 	    }
 
 	    unshift @selectors, "before \"".$selector."\"";
 
-	} elsif($clause eq "after") {
+	} elsif($clause =~ "a(f(t(er?)?)?)?") {
 
 	    # Get id (hash) for shapshot after this datetime
 	    $snapshot = $API->snapshot_after($selector);
-	    unless(defined($snapshot) && $snapshot ne "") {
+	    unless($snapshot) {
 		print STDERR "No snapshot found after ".$selector."\n";
 		exit(255);
 	    }
@@ -602,6 +614,20 @@ sub confsnap_summary()
     my %latest = ();
     my $name_width = 0;
     my $count_width = 0;
+
+    if($CONFIG{'datadir'}) {
+	printf("Local repository is %s", $CONFIG{'datadir'});
+	my ($repo_size) = (`du -sh $CONFIG{'datadir'}` =~ /^\s*(\S+)\s+/);
+	if(defined($repo_size) && $repo_size ne "") {
+	    printf(", size %s", $repo_size);
+	}
+	print ".\n";
+    }
+    if($CONFIG{'remote_repository_url'}) {
+	printf("Remote repository URL is %s.\n", $CONFIG{'remote_repository_url'});
+    }
+
+    print "\n";
 
     foreach my $device_name (sort keys %DEVICE) {
 	# Format path to the specified device's
