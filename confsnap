@@ -616,15 +616,17 @@ sub confsnap_summary()
     my $count_width = 0;
 
     if($CONFIG{'datadir'}) {
-	printf("Local repository is %s", $CONFIG{'datadir'});
+	printf("\nLocal repository is ".($CONFIG{'colorize_output'} ? "\033[01;37m%s\033[00m":"%s"), $CONFIG{'datadir'});
 	my ($repo_size) = (`du -sh $CONFIG{'datadir'}` =~ /^\s*(\S+)\s+/);
 	if(defined($repo_size) && $repo_size ne "") {
-	    printf(", size %s", $repo_size);
+	    printf(" (size ".($CONFIG{'colorize_output'} ? "\033[01;37m%s\033[00m)":"%s)"), $repo_size);
 	}
-	print ".\n";
     }
+
+    print "\n";
+
     if($CONFIG{'remote_repository_url'}) {
-	printf("Remote repository URL is %s.\n", $CONFIG{'remote_repository_url'});
+	printf("Remote repository is ".($CONFIG{'colorize_output'} ? "\033[01;37m%s\033[00m":"%s")."\n", $CONFIG{'remote_repository_url'});
     }
 
     print "\n";
