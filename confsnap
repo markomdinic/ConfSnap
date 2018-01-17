@@ -2,7 +2,7 @@
 #
 # ConfSnap (Network device configuration backup utility)
 #
-# Copyright (c) 2017 Marko Dinic. All rights reserved.
+# Copyright (c) 2018 Marko Dinic. All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@
 
 ###############################################################################
 
-our $VERSION = "0.1.3";
+our $VERSION = "0.1.4";
 
 ###############################################################################
 
@@ -353,6 +353,11 @@ if(!defined($action) || $action eq "") {
 
     my $device_name = shift @ARGV;
 
+    # Format path to device's configuration storage
+    my $path = $API->device_config_path($device_name);
+
+    die "Invalid configuration snapshot path\n" unless(defined($path) && $path ne "");
+
     my @snapshots = ();
     my @selectors = ();
 
@@ -379,7 +384,7 @@ if(!defined($action) || $action eq "") {
 
 	    die "Invalid snapshot index \"".$selector."\" specified.\n" unless($selector =~ /^\d+$/);
 
-	    $snapshot = $API->snapshot_at($selector);
+	    $snapshot = $API->snapshot_at($selector, $path);
 	    unless($snapshot) {
 		print STDERR "No snapshot found at index ".$selector."\n";
 		exit(255);
@@ -390,7 +395,7 @@ if(!defined($action) || $action eq "") {
 	} elsif($clause =~ /^b(?:e(?:f(?:o(?:re?)?)?)?)?$/) {
 
 	    # Get id (hash) for shapshot before this datetime
-	    $snapshot = $API->snapshot_before($selector);
+	    $snapshot = $API->snapshot_before($selector, $path);
 	    unless($snapshot) {
 		print STDERR "No snapshot found before ".$selector."\n";
 		exit(255);
@@ -401,7 +406,7 @@ if(!defined($action) || $action eq "") {
 	} elsif($clause =~ /^a(?:f(?:t(?:er?)?)?)?$/) {
 
 	    # Get id (hash) for shapshot after this datetime
-	    $snapshot = $API->snapshot_after($selector);
+	    $snapshot = $API->snapshot_after($selector, $path);
 	    unless($snapshot) {
 		print STDERR "No snapshot found after ".$selector."\n";
 		exit(255);
@@ -450,7 +455,7 @@ exit($res ? 0:255);
 
 sub VERSION_MESSAGE
 {
-    print "ConfSnap v".$VERSION." , Copyright (c) 2017 Marko Dinic. All rights reserved.\n";
+    print "ConfSnap v".$VERSION." , Copyright (c) 2018 Marko Dinic. All rights reserved.\n";
 }
 
 sub HELP_MESSAGE

@@ -1,6 +1,6 @@
 # Config::ContextSensitive.pm
 #
-# Copyright (c) 2014 Marko Dinic <marko@yu.net>. All rights reserved.
+# Copyright (c) 2018 Marko Dinic <marko@yu.net>. All rights reserved.
 # This program is free software; you can redistribute it and/or
 # modify it under the same terms as Perl itself.
 #
@@ -6833,7 +6833,7 @@ Marko Dinic, E<lt>marko@yu.netE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2014 by Marko Dinic, All Rights Reserved
+Copyright (C) 2018 by Marko Dinic, All Rights Reserved
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.8.8 or,
