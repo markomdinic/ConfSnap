@@ -135,6 +135,26 @@ sub init($$)
     return defined($self->git('init', $path)) ? 1:0;
 }
 #
+# git config
+#
+#  This method sets GIT repository-specific config options.
+#
+#   Input:	1. self object reference (passed implicitly)
+#		2. config option name
+#		3. config option value
+#
+#   Output:	1. TRUE, if succeeded
+#		   FALSE, if failed
+#
+sub config($$)
+{
+    my ($self, $option, $value) = @_;
+
+    return 0 unless(defined($option) && $option ne "" && defined($value));
+
+    return defined($self->git('config', $option, $value)) ? 1:0;
+}
+#
 # git status
 #
 #  Reports current status of the active branch.

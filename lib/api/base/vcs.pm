@@ -132,6 +132,45 @@ sub is_repository($$)
     return (defined($res) && $res ne "" ) ? 1:0;
 }
 #
+# Configure specified VCS repository
+#
+#  This method configures VCS repository with parameters required
+#  for normal operation of VCS. For example, GIT requires either
+#  global or repository-specific commit author's name and email
+#  address before anything can be commited.
+#
+#   Input:	1. self object reference
+#		2. full path to VCS repository
+#
+#   Output:	1. TRUE, if configuration suceeded
+#		   FALSE, if configuration failed
+#		   or path is NOT a VCS repository
+#
+sub config_repository($$)
+{
+    my ($self, $path) = @_;
+    my $res = 1;
+
+    # Path MUST be a proper directory
+    return 0 unless(defined($path) &&
+		    $path ne "" &&
+		    -d $path);
+
+    # If path is a GIT repository ...
+    if($self->is_repository($path)) {
+	my $user = `whoami`;
+	# ... change to GIT repository dir ...
+	my $wd = $self->cd($path);
+	# ... configure it with basic parameters
+	$res = $self->{'git'}->config('user.name', 'ConfSnap') &&
+	       $self->{'git'}->config('user.email', (defined($user) && $user ne '') ? $user:'confsnap');
+	# ... and change back to previous working dir
+	chdir($wd);
+    }
+
+    return $res;
+}
+#
 # Initialize specified directory as a VCS repository
 #
 #  This method checks if specified path is a VCS repository
@@ -166,10 +205,14 @@ sub init_repository($$)
 
     # If repository is initialized ...
     if($res) {
-	# ... strip trailing '/', if any
-	$path =~ s/[\/]+$//g;
-	# ... keep full path to the repository
-	$self->{'repo'} = $path;
+	# ... configure it ...
+	$res = $self->config_repository($path);
+	if($res) {
+	    # ... strip trailing '/', if any
+	    $path =~ s/[\/]+$//g;
+	    # ... keep full path to the repository
+	    $self->{'repo'} = $path;
+	}
     }
 
     return $res;

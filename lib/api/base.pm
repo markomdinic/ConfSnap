@@ -120,12 +120,11 @@ sub device_config_path($$)
 			defined($self->{'devs'}->{$device_name}));
 
     my $vrf = $self->{'devs'}->{$device_name}->{'vrf'};
-    my $host = $self->{'devs'}->{$device_name}->{'host'};
 
     # Format path relative to the base repository dir
     return (defined($vrf) && $vrf ne "") ?
-		    "vrfs/".$vrf."/".$device_name."/".$host.".config":
-		    "devices/".$device_name."/".$host.".config";
+		    "vrfs/".$vrf."/".$device_name."/config":
+		    "devices/".$device_name."/config";
 }
 #
 # Store device configuration
