@@ -50,6 +50,15 @@ our $CONF_TEMPLATE = SECTION(
 
 ##############################################################################################
 
+use constant {
+    RE_LOGIN	=> '(?:[Uu]ser(?:name)?|[Ll]ogin):',
+    RE_PASSWD	=> '[Pp]ass(?:word)?:',
+    RE_PROMPT	=> '\[[^\[\]]+\]\s+>\s+',
+    RE_FAILED	=> '[Ll]ogin\s+[Ff]ailed\s*,?'
+};
+
+##############################################################################################
+
 sub register()
 {
     return $CONF_TEMPLATE;
@@ -67,15 +76,17 @@ sub connect($$)
 
     # Connect using SSH ?
     if($self->{'protocol'} eq "ssh") {
-	# Prepare credentials
-	my $user = (defined($self->{'username'}) &&
-		    $self->{'username'} ne "") ?
-			$self->{'username'}:"";
-	my $pass = (defined($self->{'password'}) &&
-		    $self->{'password'} ne "") ?
-			$self->{'password'}:"";
-	# Create new SSH connection
-	$conn = Net::OpenSSH->new($host, 'user' => $user, 'password' => $pass);
+	# Create new SSH client and connect to RouterOS device
+	# (append '+ct' to the username to disable colors)
+	my $ssh = Net::OpenSSH->new($host,
+				    'user' => defined($self->{'username'}) ? $self->{'username'}.'+ct':"",
+				    'password' => defined($self->{'password'}) ? $self->{'password'}:"");
+	# Use SSH client as terminal slave
+	my ($pty, $pid) = $ssh->open2pty({stderr_to_stdout => 1});
+	# Use telnet module as terminal handler
+	$conn = Net::Telnet->new(Fhopen => $pty,
+				 Telnetmode => 0,
+				 Timeout => $self->{'timeout'});
     # Connect using telnet ?
     } elsif($self->{'protocol'} eq "telnet") {
 	# Create new telnet client
@@ -91,9 +102,7 @@ sub prompt($$)
 {
     my ($self, $conn) = @_;
 
-    return unless(defined($conn) && ref($conn) eq 'Net::Telnet');
-
-    return $conn->prompt('/\[[^\[\]]+\]\s+>\s+$/');
+    return $conn->prompt('/'.&RE_PROMPT.'$/');
 }
 
 sub auth($$)
@@ -102,41 +111,36 @@ sub auth($$)
 
     return 0 unless(defined($conn));
 
-    # Connected via SSH ?
-    if(ref($conn) eq 'Net::OpenSSH') {
-	return 1 unless $conn->error;
-    # Connected via telnet ?
-    } elsif((ref($conn) eq 'Net::Telnet')) {
-	# Send username, if defined
-	if(defined($self->{'username'})) {
-	    $conn->waitfor('/(?:[Uu]ser(?:name)?|[Ll]ogin):/');
-	    $conn->put($self->{'username'}."+ct\n");
-	}
-	# Send password, if defined
-	$conn->waitfor('/[Pp]ass(?:word)?:/');
-	$conn->cmd(defined($self->{'password'}) ? $self->{'password'}:"");
-	# Success
-	return 1;
+    # Wait for login, password or command prompt
+    my ($p, $m) = $conn->waitfor('/'.&RE_LOGIN.'|'.&RE_PASSWD.'|'.&RE_PROMPT.'/');
+    # If we got login prompt ...
+    if($m =~ /@{[RE_LOGIN]}/) {
+	# ... send username (and append '+ct' to disable colors)
+	$conn->put((defined($self->{'username'}) ? $self->{'username'}.'+ct':"")."\n");
+	# ... wait for password or command prompt
+	($p, $m) = $conn->waitfor('/'.&RE_PASSWD.'|'.&RE_PROMPT.'/');
+    }
+    # If we got password prompt ...
+    if($m =~ /@{[RE_PASSWD]}/) {
+	# ... send password
+	$conn->put((defined($self->{'password'}) ? $self->{'password'}:"")."\n");
+	# ... wait for command prompt or login failed message
+	($p, $m) = $conn->waitfor('/'.&RE_FAILED.'|'.&RE_PROMPT.'/');
+	# If login failed, abort
+	return 0 if($m =~ /@{[RE_FAILED]}/);
     }
 
-    return 0;
+    # At this point we are at the command prompt
+    # one way or another (unless login failed).
+    return 1;
 }
 
 sub collect($$)
 {
     my ($self, $conn) = @_;
 
-    my @cfg = ();
-
-    # Connected via SSH ?
-    if(ref($conn) eq 'Net::OpenSSH') {
-	# Collect running config
-	@cfg = $conn->capture("/export verbose\n");
-    # Connected via telnet ?
-    } elsif(ref($conn) eq 'Net::Telnet') {
-	# Collect running config
-	@cfg = $conn->cmd("/export verbose");
-    }
+    # Collect running config
+    my @cfg = $conn->cmd("/export verbose");
     # If we got something ...
     if(@cfg) {
 	# Skip leading trash
@@ -158,16 +162,12 @@ sub end($$)
 {
     my ($self, $conn) = @_;
 
-    return unless(defined($conn) && ref($conn) eq 'Net::Telnet');
-
     $conn->cmd("/quit");
 }
 
 sub disconnect($$)
 {
     my ($self, $conn) = @_;
-
-    return unless(defined($conn) && ref($conn) eq 'Net::Telnet');
 
     $conn->close;
 }
