@@ -116,11 +116,20 @@ sub load_module($$;@)
     my $classname = shift;
 
     # Load module
-    eval 'use '.$classname.(scalar(@_) > 0 ? ' qw('.join(' ', @_).');':'');
+    eval 'require '.$classname.';';
 
     if(defined($@) && $@ ne '') {
-	$self->logging('LOG_ERR', "Failed to load module ".$classname);
+	my $errmsg = "Failed to load module ".$classname;
+	if(ref($self) ne '') {
+	    $self->logging('LOG_ERR', $errmsg);
+	} else {
+	    print STDERR "[ERR] ".$errmsg."\n";
+	}
 	return 0;
+    }
+
+    if(scalar(@_) > 0) {
+	$classname->export_to_level(1, undef, @_);
     }
 
     return 1;

@@ -88,10 +88,10 @@ sub connect($$)
     # Connect using https ?
     } elsif($self->{'protocol'} eq "https") {
 	# Safely load Net::NetSSLeay on demand
-	$self->api->load_module('Net::SSLeay', 'get_https', 'make_headers');
+	$self->api->load_module('Net::SSLeay', 'get_https', 'make_headers')
 	    or return undef;
 	# Safely load MIME::Base64 on demand
-	$self->api->load_module('MIME::Base64');
+	$self->api->load_module('MIME::Base64')
 	    or return undef;
 	# There's nothing to do here for Net::SSLeay,
 	# but we can pass host as connection handle,
