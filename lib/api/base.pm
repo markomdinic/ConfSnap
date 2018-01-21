@@ -98,6 +98,34 @@ sub new($$$)
     return $self;
 }
 #
+# Safely load a Perl module
+#
+#  This method loads a Perl module safely, without
+#  killing the process in case of failure.
+#
+#  Input:	1. self object reference
+#		2. module class name
+#		3+ (optional) module tags
+#
+#  Output:	TRUE, if succeeded,
+#		FALSE, if failed
+#
+sub load_module($$;@)
+{
+    my $self = shift;
+    my $classname = shift;
+
+    # Load module
+    eval 'use '.$classname.(scalar(@_) > 0 ? ' qw('.join(' ', @_).');':'');
+
+    if(defined($@) && $@ ne '') {
+	$self->logging('LOG_ERR', "Failed to load module ".$classname);
+	return 0;
+    }
+
+    return 1;
+}
+#
 # Format path to the device configuration
 #
 #  This method produces path to the given device's

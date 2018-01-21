@@ -26,8 +26,6 @@ use warnings;
 
 ##############################################################################################
 
-use Net::Telnet;
-use Net::OpenSSH;
 use Config::ContextSensitive qw(:macros);
 
 ##############################################################################################
@@ -74,8 +72,15 @@ sub connect($$)
 
     my $conn;
 
+    # Safely load Net::Telnet on demand
+    $self->api->load_module('Net::Telnet')
+	or return undef;
+
     # Connect using SSH ?
     if($self->{'protocol'} eq "ssh") {
+	# Safely load Net::OpenSSH on demand
+	$self->api->load_module('Net::OpenSSH')
+	    or return undef;
 	# Create new SSH client and connect to RouterOS device
 	# (append '+ct' to the username to disable colors)
 	my $ssh = Net::OpenSSH->new($host,

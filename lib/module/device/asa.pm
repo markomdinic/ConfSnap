@@ -26,10 +26,6 @@ use warnings;
 
 ##############################################################################################
 
-use Net::Telnet;
-use Net::OpenSSH;
-use MIME::Base64;
-use Net::SSLeay qw(get_https make_headers);
 use Config::ContextSensitive qw(:macros);
 
 ##############################################################################################
@@ -70,6 +66,9 @@ sub connect($$)
 
     # Connect using SSH ?
     if($self->{'protocol'} eq "ssh") {
+	# Safely load Net::OpenSSH on demand
+	$self->api->load_module('Net::OpenSSH')
+	    or return undef;
 	# Prepare credentials
 	my $user = $self->{'username'};
 	return undef unless(defined($user) && $user ne "");
@@ -79,12 +78,21 @@ sub connect($$)
 	$conn = Net::OpenSSH->new($host, 'user' => $user, 'password' => $pass);
     # Connect using telnet ?
     } elsif($self->{'protocol'} eq "telnet") {
+	# Safely load Net::Telnet on demand
+	$self->api->load_module('Net::Telnet')
+	    or return undef;
 	# Create new telnet client
 	$conn = Net::Telnet->new(Timeout => $self->{'timeout'});
 	# Telnet to ASA device
 	$conn->open($host);
     # Connect using https ?
     } elsif($self->{'protocol'} eq "https") {
+	# Safely load Net::NetSSLeay on demand
+	$self->api->load_module('Net::SSLeay', 'get_https', 'make_headers');
+	    or return undef;
+	# Safely load MIME::Base64 on demand
+	$self->api->load_module('MIME::Base64');
+	    or return undef;
 	# There's nothing to do here for Net::SSLeay,
 	# but we can pass host as connection handle,
 	# since we must return something other than undef

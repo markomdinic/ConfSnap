@@ -20,7 +20,7 @@
 
 ###############################################################################
 
-our $VERSION = "0.1.4";
+our $VERSION = "0.2.0";
 
 ###############################################################################
 
@@ -67,7 +67,7 @@ use Config::ContextSensitive qw(:macros);
 ###############################################################################
 
 use api::base;
-use api::base::vcs;
+#use api::base::vcs;
 use api::util::event;
 
 ###############################################################################
@@ -163,7 +163,6 @@ our ($API, $EV);
 ###############################################################################
 #         C O M M A N D   L I N E   A R G U M E N T   P A R S E R
 ###############################################################################
-
 
 # Display help if invoked without arguments
 unless(scalar(@ARGV)) {
@@ -1111,6 +1110,100 @@ sub fetch_device_config($$)
 
     return $res;
 }
+
+###############################################################################
+#                M O D U L E   L O A D I N G   F U N C T I O N S
+###############################################################################
+
+#
+# Load device module
+#
+#  This function is used as a postparser callback in
+#  configuration template. It is used by config parser
+#  to load a module, retrieve module's config template
+#  and pass it back to the config parser.
+#
+#  Input:	parameters that Config::ContextSensitive
+#		config parser passes to a postparser.
+#
+#  Output:	parameters that are passed back to
+#		Config::ContextSensitive config parser.
+#
+sub load_device_module($$$$$$$)
+{
+    my ($conf, $directive_name, $value, $dest_hash, $map_hash, $section, $nested_section) = @_;
+
+    # Module's name is passed by the config parser
+    # as $value parameter. The rest is ignored.
+    my $moduleclass = 'module::device::'.$value;
+
+    # Load module
+    api::base->load_module($moduleclass)
+	or return 0;
+
+    # Get module's configuration template
+    my $conf_template = $moduleclass->register();
+
+    return (1, $conf_template);
+}
+#
+# Check if module is a device module
+#
+#  This function checks if given module class implements
+#  all methods that a device module is supposed to provide.
+#  If it does, it can be considered a device module class.
+#
+#   Input:	1. module class name
+#
+#   Output:	1. TRUE, if it is a device module
+#		   FALSE, if it isn't
+#
+sub is_device_module($)
+{
+    my $moduleclass = shift;
+
+    # Device module must implement method register()
+    my $method_register = eval { $moduleclass->can('register'); };
+    unless(defined($method_register) && ref($method_register) eq 'CODE') {
+	$API->logging('LOG_ERR', "Module %s is missing mandatory method register()",
+				 $moduleclass);
+	return 0;
+    }
+
+    # Device module must implement method instantiate()
+    my $method_instantiate = eval { $moduleclass->can('instantiate'); };
+    unless(defined($method_instantiate) && ref($method_instantiate) eq 'CODE') {
+	$API->logging('LOG_ERR', "Module %s is missing constructor method instantiate()",
+				 $moduleclass);
+	return 0;
+    }
+
+    # Device module must implement method connect()
+    my $method_connect = eval { $moduleclass->can('connect'); };
+    unless(defined($method_connect) && ref($method_connect) eq 'CODE') {
+	$API->logging('LOG_ERR', "Module %s is missing mandatory method connect()",
+				 $moduleclass);
+	return 0;
+    }
+
+    # Device module must implement method disconnect()
+    my $method_disconnect = eval { $moduleclass->can('disconnect'); };
+    unless(defined($method_disconnect) && ref($method_disconnect) eq 'CODE') {
+	$API->logging('LOG_ERR', "Module %s is missing mandatory method disconnect()",
+				 $moduleclass);
+	return 0;
+    }
+
+    # Device module must implement method collect()
+    my $method_collect = eval { $moduleclass->can('collect'); };
+    unless(defined($method_collect) && ref($method_collect) eq 'CODE') {
+	$API->logging('LOG_ERR', "Module %s is missing mandatory method collect()",
+				 $moduleclass);
+	return 0;
+    }
+
+    return 1;
+}
 #
 # Create module instances for each device
 #
@@ -1148,6 +1241,7 @@ sub instantiate_devices(;@)
 	# Every configured device should be of type
 	# that matches one of available modules
 	my $modclass = 'module::device::'.$device->{'type'};
+	return 0 unless is_device_module($modclass);
 	# Create an instance of the module matching
 	# the device type from the device's backup
 	# parameters hash
@@ -1156,82 +1250,6 @@ sub instantiate_devices(;@)
     }
 
     return 1;
-}
-#
-# Load device module
-#
-#  This function is used as a postparser callback in
-#  configuration template. It is used by config parser
-#  to load a module, retrieve module's config template
-#  and pass it back to the config parser.
-#
-#  Input:	parameters that Config::ContextSensitive
-#		config parser passes to a postparser.
-#
-#  Output:	parameters that are passed back to
-#		Config::ContextSensitive config parser.
-#
-sub load_device_module($$$$$$$)
-{
-    my ($conf, $directive_name, $value, $dest_hash, $map_hash, $section, $nested_section) = @_;
-
-    # Module's name is passed by the config parser
-    # as $value parameter. The rest is ignored.
-    my $moduleclass = 'module::device::'.$value;
-
-    # Load module
-    eval 'use '.$moduleclass;
-    if(defined($@) && $@ ne "") {
-	print STDERR $@;
-	$API->logging('LOG_ERR', $@);
-	return 0;
-    }
-
-    # Device module must implement method register()
-    my $method_register = eval { $moduleclass->can('register'); };
-    unless(defined($method_register) && ref($method_register) eq 'CODE') {
-	$API->logging('LOG_ERR', "Module %s is missing mandatory method register()",
-				 $value);
-	return 0;
-    }
-
-    # Device module must implement method instantiate()
-    my $method_instantiate = eval { $moduleclass->can('instantiate'); };
-    unless(defined($method_instantiate) && ref($method_instantiate) eq 'CODE') {
-	$API->logging('LOG_ERR', "Module %s is missing constructor method instantiate()",
-				 $value);
-	return 0;
-    }
-
-    # Device module must implement method connect()
-    my $method_connect = eval { $moduleclass->can('connect'); };
-    unless(defined($method_connect) && ref($method_connect) eq 'CODE') {
-	$API->logging('LOG_ERR', "Module %s is missing mandatory method connect()",
-				 $value);
-	return 0;
-    }
-
-    # Device module must implement method disconnect()
-    my $method_disconnect = eval { $moduleclass->can('disconnect'); };
-    unless(defined($method_disconnect) && ref($method_disconnect) eq 'CODE') {
-	$API->logging('LOG_ERR', "Module %s is missing mandatory method disconnect()",
-				 $value);
-	return 0;
-    }
-
-    # Device module must implement method collect()
-    my $method_collect = eval { $moduleclass->can('collect'); };
-    unless(defined($method_collect) && ref($method_collect) eq 'CODE') {
-	$API->logging('LOG_ERR', "Module %s is missing mandatory method collect()",
-				 $value);
-	return 0;
-    }
-
-
-    # Get module's configuration template
-    my $conf_template = $moduleclass->register();
-
-    return (1, $conf_template);
 }
 
 ###############################################################################

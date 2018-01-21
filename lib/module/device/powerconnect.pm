@@ -26,7 +26,6 @@ use warnings;
 
 ##############################################################################################
 
-use Net::Telnet;
 use Config::ContextSensitive qw(:macros);
 
 ##############################################################################################
@@ -62,6 +61,9 @@ sub connect($$)
 
     $host = $self->{'host'} unless(defined($host) && $host ne "");
 
+    # Safely load Net::Telnet on demand
+    $self->api->load_module('Net::Telnet')
+	or return 0;
     # Create new telnet client
     my $conn = Net::Telnet->new(Timeout => $self->{'timeout'});
     # Telnet to Cisco IOS device
