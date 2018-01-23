@@ -993,14 +993,17 @@ sub fetch_device_config($$)
 
 		    # Connect from our device to the device on the remote end
 		    $res = $EV->invoke_handler('handler' => $method_remote,
-					       'args' => [ $device, $conn, $remote->{'host'}, $vrf ],
+					       'args' => [ $device, $remote, $conn, $remote->{'host'}, $vrf ],
 					       'timeout' => $timeout,
 					       'on_timeout' => sub {
 						    $API->logging('LOG_DEBUG', "Timed out while attempting to connect to remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
 						    return 0;
 					       });
 
-		    $API->logging('LOG_DEBUG', "Connected to remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]") unless(defined($res) && !$res);
+		    # Try the next remote device if connection failed 
+		    next unless($res);
+
+		    $API->logging('LOG_DEBUG', "Connected to remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
 
 		    # Does remote device require some specific prompt ?
 		    my $method_remote_prompt = $remote->can('prompt');

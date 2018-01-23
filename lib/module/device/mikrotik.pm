@@ -64,6 +64,34 @@ sub register()
 
 ##############################################################################################
 
+sub protocol($)
+{
+    my $self = shift;
+
+    return defined($self->{'protocol'}) ?
+		    $self->{'protocol'}:'ssh';
+}
+
+sub username($)
+{
+    my $self = shift;
+
+    # Append '+ct' to username to disable colors
+    return (defined($self->{'username'}) &&
+	    $self->{'username'} ne '') ?
+		    $self->{'username'}.'+ct':undef,
+}
+
+sub password($)
+{
+    my $self = shift;
+
+    return defined($self->{'password'}) ?
+		    $self->{'password'}:'';
+}
+
+##############################################################################################
+
 sub connect($$)
 {
     my ($self, $host) = @_;
@@ -77,23 +105,23 @@ sub connect($$)
 	or return undef;
 
     # Connect using SSH ?
-    if($self->{'protocol'} eq "ssh") {
+    if($self->protocol eq 'ssh') {
 	# Safely load Net::OpenSSH on demand
 	$self->api->load_module('Net::OpenSSH')
 	    or return undef;
+	# Get login credentials
+	my $user = $self->username;
+	return undef unless defined($user);
+	my $pass = $self->password;
+	return undef unless defined($pass);
 	# Create new SSH client and connect to RouterOS device
-	# (append '+ct' to the username to disable colors)
-	my $ssh = Net::OpenSSH->new($host,
-				    'user' => defined($self->{'username'}) ? $self->{'username'}.'+ct':"",
-				    'password' => defined($self->{'password'}) ? $self->{'password'}:"");
+	my $ssh = Net::OpenSSH->new($host, 'user' => $user, 'password' => $pass);
 	# Use SSH client as terminal slave
 	my ($pty, $pid) = $ssh->open2pty({stderr_to_stdout => 1});
 	# Use telnet module as terminal handler
-	$conn = Net::Telnet->new(Fhopen => $pty,
-				 Telnetmode => 0,
-				 Timeout => $self->{'timeout'});
+	$conn = Net::Telnet->new(Fhopen => $pty, Telnetmode => 0, Timeout => $self->{'timeout'});
     # Connect using telnet ?
-    } elsif($self->{'protocol'} eq "telnet") {
+    } elsif($self->protocol eq 'telnet') {
 	# Create new telnet client
 	$conn = Net::Telnet->new(Timeout => $self->{'timeout'});
 	# Telnet to RouterOS device
@@ -110,6 +138,7 @@ sub prompt($$)
     return $conn->prompt('/'.&RE_PROMPT.'$/');
 }
 
+
 sub auth($$)
 {
     my ($self, $conn) = @_;
@@ -120,15 +149,19 @@ sub auth($$)
     my ($p, $m) = $conn->waitfor('/'.&RE_LOGIN.'|'.&RE_PASSWD.'|'.&RE_PROMPT.'/');
     # If we got login prompt ...
     if($m =~ /@{[RE_LOGIN]}/) {
-	# ... send username (and append '+ct' to disable colors)
-	$conn->put((defined($self->{'username'}) ? $self->{'username'}.'+ct':"")."\n");
+	my $user = $self->username;
+	return 0 unless defined($user);
+	# ... send username
+	$conn->put($user."\n");
 	# ... wait for password or command prompt
 	($p, $m) = $conn->waitfor('/'.&RE_PASSWD.'|'.&RE_PROMPT.'/');
     }
     # If we got password prompt ...
     if($m =~ /@{[RE_PASSWD]}/) {
+	my $pass = $self->password;
+	return 0 unless defined($pass);
 	# ... send password
-	$conn->put((defined($self->{'password'}) ? $self->{'password'}:"")."\n");
+	$conn->put($pass."\n");
 	# ... wait for command prompt or login failed message
 	($p, $m) = $conn->waitfor('/'.&RE_FAILED.'|'.&RE_PROMPT.'/');
 	# If login failed, abort
@@ -149,9 +182,9 @@ sub collect($$)
     # If we got something ...
     if(@cfg) {
 	# Skip leading trash
-	for(;scalar(@cfg) > 0 && $cfg[0] =~ /^[\e\r\n\#]/; shift @cfg) {}
+	for(;scalar(@cfg) > 0 && $cfg[0] =~ /^[\e\r\n\#]|\/export/i; shift @cfg) {}
 	# Skip trailing trash
-	for(;scalar(@cfg) > 0 && $cfg[$#cfg] =~ /^[\e\r\n\#]/; pop @cfg) {}
+	for(;scalar(@cfg) > 0 && $cfg[$#cfg] =~ /^[\e\r\n\#]|interrupt/i; pop @cfg) {}
 	# If filter regexp is defined ...
 	if(defined($self->{'filter'}) && $self->{'filter'} ne "") {
 	    # ... remove all matching lines
@@ -161,6 +194,29 @@ sub collect($$)
     # If we got config, return it as string.
     # Otherwise, return undef
     return (scalar(@cfg) > 0) ? join('', @cfg):undef;
+}
+
+sub remote($$$;$)
+{
+    my ($self, $remote, $conn, $host, $vrf) = @_;
+
+    my $proto = $remote->protocol;
+
+    if($proto eq 'ssh') {
+	# Get remote device's login username
+	my $user = $remote->username;
+	return 0 unless defined($user);
+	# SSH to the router on the remote end
+	$conn->put("/system ssh user=".$user." ".((defined($vrf) && $vrf ne "") ? "routing-table=".$vrf." ":"").$host."\n");
+    } elsif($proto eq 'telnet') {
+	# Telnet to the device on the remote end
+	$conn->put("/system telnet ".((defined($vrf) && $vrf ne "") ? "routing-table=".$vrf." ":"").$host."\n");
+    } else {
+	$self->api->logging('LOG_ERR', "Protocol %s is not supported by %s for indirect device access", $proto, ref($self));
+	return 0;
+    }
+
+    return 1;
 }
 
 sub end($$)

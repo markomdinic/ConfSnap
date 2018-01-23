@@ -55,6 +55,34 @@ sub register()
 
 ##############################################################################################
 
+sub protocol($)
+{
+    return 'telnet';
+}
+
+sub username($)
+{
+    my $self = shift;
+
+    return defined($self->{'username'}) ? $self->{'username'}:undef;
+}
+
+sub password($)
+{
+    my $self = shift;
+
+    return defined($self->{'password'}) ? $self->{'password'}:'';
+}
+
+sub admin_password($)
+{
+    my $self = shift;
+
+    return defined($self->{'enable'}) ? $self->{'enable'}:'';
+}
+
+##############################################################################################
+
 sub connect($$)
 {
     my ($self, $host) = @_;
@@ -84,18 +112,18 @@ sub auth($$;$$$)
     my ($self, $conn) = @_;
 
     # Get basic credentials
-    my $user = $self->{'username'};
-    return 0 unless(defined($user) && $user ne "");
-    my $pass = $self->{'password'};
-    return 0 unless(defined($pass) && $pass ne "");
+    my $user = $self->username;
+    return 0 unless defined($user);
+    my $pass = $self->password;
+    return 0 unless defined($pass);
 
     # Authenticate to Force10 device
     $conn->login($user, $pass);
 
     # Get enable password
-    my $enable = $self->{'enable'};
+    my $enable = $self->admin_password;
     # Change to enable mode, if defined
-    if(defined($enable) && $enable ne "") {
+    if(defined($enable) && $enable ne '') {
 	$conn->cmd("enable\n".$enable);
     }
 
@@ -127,6 +155,7 @@ sub collect($$)
 sub end($$)
 {
     my ($self, $conn) = @_;
+
     return unless defined($conn);
 
     $conn->cmd("exit");
@@ -135,6 +164,7 @@ sub end($$)
 sub disconnect($$)
 {
     my ($self, $conn) = @_;
+
     return unless defined($conn);
 
     $conn->close;

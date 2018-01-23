@@ -55,6 +55,34 @@ sub register()
 
 ##############################################################################################
 
+sub protocol($)
+{
+    return 'telnet';
+}
+
+sub username($)
+{
+    my $self = shift;
+
+    return defined($self->{'username'}) ? $self->{'username'}:undef;
+}
+
+sub password($)
+{
+    my $self = shift;
+
+    return defined($self->{'password'}) ? $self->{'password'}:'';
+}
+
+sub admin_password($)
+{
+    my $self = shift;
+
+    return defined($self->{'enable'}) ? $self->{'enable'}:'';
+}
+
+##############################################################################################
+
 sub connect($$)
 {
     my ($self, $host) = @_;
@@ -84,13 +112,13 @@ sub auth($$)
     my ($self, $conn) = @_;
 
     # At least password must be defined
-    my $pass = $self->{'password'};
-    return 0 unless(defined($pass) && $pass ne "");
+    my $pass = $self->password;
+    return 0 unless defined($pass);
 
     # Get username
-    my $user = $self->{'username'};
+    my $user = $self->username;
     # Send username, if defined
-    if(defined($user) && $user ne "") {
+    if(defined($user) && $user ne '') {
 	$conn->waitfor('/[Uu]sername:/');
 	$conn->put($user."\n");
     }
@@ -100,9 +128,9 @@ sub auth($$)
     $conn->cmd($pass);
 
     # Get enable password
-    my $enable = $self->{'enable'};
+    my $enable = $self->admin_password;
     # Change to enable mode, if defined
-    if(defined($enable) && $enable ne "") {
+    if(defined($enable) && $enable ne '') {
 	$conn->cmd("enable\n".$enable);
     }
 
@@ -133,15 +161,25 @@ sub collect($$)
 
 sub remote($$$;$)
 {
-    my ($self, $conn, $host, $vrf) = @_;
+    my ($self, $remote, $conn, $host, $vrf) = @_;
 
-    # Telnet to router on remote end
+    my $proto = $remote->protocol;
+
+    unless($proto eq 'telnet') {
+	$self->api->logging('LOG_ERR', "Protocol %s is not supported by %s for indirect device access", $proto, ref($self));
+	return 0;
+    }
+
+    # Telnet to the device on the remote end
     $conn->put("telnet ".$host.((defined($vrf) && $vrf ne "") ? " /vrf ".$vrf:"")."\n");
+
+    return 1;
 }
 
 sub end($$)
 {
     my ($self, $conn) = @_;
+
     return unless defined($conn);
 
     $conn->cmd("exit");
@@ -150,6 +188,7 @@ sub end($$)
 sub disconnect($$)
 {
     my ($self, $conn) = @_;
+
     return unless defined($conn);
 
     $conn->close;

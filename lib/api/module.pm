@@ -73,6 +73,151 @@ sub api($)
     return $API;
 }
 #
+# Get device connect/login protocol
+#
+#  This is the base class implementation of the method
+#  used to query module instances about their configured
+#  connect protocol.
+#
+#  It SHOULD be implemented by all modules, but it MUST
+#  be implemented by modules that support remote/indirect
+#  connections via other devices.
+#
+#   Input:	1. module instance objref (passed implicitly)
+#
+#   Output:	1. protocol name string
+#
+sub protocol($)
+{
+    return '';
+}
+#
+# Get device login username
+#
+#  This is the base class implementation of the method
+#  used to query module instances about their configured
+#  login username.
+#
+#  It SHOULD be implemented by all modules, but it MUST
+#  be implemented by modules that support remote/indirect
+#  connections via other devices.
+#
+#   Input:	1. module instance objref (passed implicitly)
+#
+#   Output:	1. username string
+#                  undef, if username is not defined
+#
+sub username($)
+{
+    return undef;
+}
+#
+# Get device login password
+#
+#  This is the base class implementation of the method
+#  used to query module instances about their configured
+#  login password.
+#
+#  It SHOULD be implemented by all modules, but it MUST
+#  be implemented by modules that support remote/indirect
+#  connections via other devices.
+#
+#   Input:	1. module instance objref (passed implicitly)
+#
+#   Output:	1. password string
+#                  undef, if password is not defined
+#
+sub password($)
+{
+    return undef;
+}
+#
+# Get device admin password
+#
+#  This is the base class implementation of the method
+#  used to query module instances about their configured
+#  admin password.
+#
+#  It SHOULD be implemented by all modules, but it MUST
+#  be implemented by modules that support remote/indirect
+#  connections via other devices.
+#
+#   Input:	1. module instance objref (passed implicitly)
+#
+#   Output:	1. admin password string
+#                  undef, if admin password is not defined
+#
+sub admin_password($)
+{
+    return undef;
+}
+#
+# Connect to a network device
+#
+#  This is the base class implementation of the method
+#  used to connect to configured network devices.
+#
+#  It MUST be implemented by all device modules.
+#
+#   Input:	1. module instance objref (passed implicitly)
+#		2. network device's hostname or IP address
+#
+#   Output:	1. connection handle (can be anything that
+#		   is meaningful to the rest of module's
+#		   code - actual data/object type depends
+#		   on the implementation).
+#                  undef, if connection failed
+#
+sub connect($$)
+{
+    my $self = shift;
+
+    $self->api->logging('LOG_ERR', "Module %s doesn't implement mandatory method connect()", ref($self));
+
+    return undef;
+}
+#
+# Collect configuration from a network device
+#
+#  This is the base class implementation of the method
+#  used to collect configuration from network devices.
+#
+#  It MUST be implemented by all device modules.
+#
+#   Input:	1. module instance objref (passed implicitly)
+#		2. connection handle
+#
+#   Output:	1. device configuration as string
+#                  undef, if failed
+#
+sub collect($$)
+{
+    my $self = shift;
+
+    $self->api->logging('LOG_ERR', "Module %s doesn't implement mandatory method collect()", ref($self));
+
+    return undef;
+}
+#
+# Disconnect from a network device
+#
+#  This is the base class implementation of the method
+#  used to disconnect from connected network devices.
+#
+#  It MUST be implemented by all device modules.
+#
+#   Input:	1. module instance objref (passed implicitly)
+#		2. connection handle
+#
+#   Output:	none
+#
+sub disconnect($$)
+{
+    my $self = shift;
+
+    $self->api->logging('LOG_ERR', "Module %s doesn't implement mandatory method disconnect()", ref($self));
+}
+#
 # Default module destructor
 #
 sub DESTROY

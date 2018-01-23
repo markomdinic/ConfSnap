@@ -232,6 +232,27 @@ sub add($$)
     return defined($self->git('add', '-A', $path)) ? 1:0;
 }
 #
+# git rm
+#
+#  This method removes one or more files or directories
+#  from the current repository branch.
+#
+#   Input:	1. self object reference (passed implicitly)
+#		2. path to the directory or file
+#
+#   Output:	1. TRUE, if succeeded
+#		   FALSE, if failed
+#
+sub rm($$)
+{
+    my ($self, $path) = @_;
+
+    return 0 unless(defined($path) && $path ne "" &&
+		    (-d $path || -f $path));
+
+    return defined($self->git('rm', '-rf', $path)) ? 1:0;
+}
+#
 # git stash
 #
 #  Put pending changes to a stack to prevent them from being

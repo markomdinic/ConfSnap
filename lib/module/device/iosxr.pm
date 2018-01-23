@@ -54,6 +54,27 @@ sub register()
 
 ##############################################################################################
 
+sub protocol($)
+{
+    return 'telnet';
+}
+
+sub username($)
+{
+    my $self = shift;
+
+    return defined($self->{'username'}) ? $self->{'username'}:undef;
+}
+
+sub password($)
+{
+    my $self = shift;
+
+    return defined($self->{'password'}) ? $self->{'password'}:'';
+}
+
+##############################################################################################
+
 sub connect($$)
 {
     my ($self, $host) = @_;
@@ -83,10 +104,10 @@ sub auth($$)
     my ($self, $conn) = @_;
 
     # Get credentials
-    my $user = $self->{'username'};
-    return 0 unless(defined($user) && $user ne "");
-    my $pass = $self->{'password'};
-    return 0 unless(defined($pass) && $pass ne "");
+    my $user = $self->username;
+    return 0 unless defined($user);
+    my $pass = $self->password;
+    return 0 unless defined($pass);
 
     # Login to IOS XR device
     $conn->login($user, $pass);
@@ -118,15 +139,25 @@ sub collect($$)
 
 sub remote($$$;$)
 {
-    my ($self, $conn, $host, $vrf) = @_;
+    my ($self, $remote, $conn, $host, $vrf) = @_;
 
-    # Telnet to router on remote end
+    my $proto = $remote->protocol;
+
+    unless($proto eq 'telnet') {
+	$self->api->logging('LOG_ERR', "Protocol %s is not supported by %s for indirect device access", $proto, ref($self));
+	return 0;
+    }
+
+    # Telnet to the device on the remote end
     $conn->put("telnet vrf ".$vrf." ".$host."\n");
+
+    return 1;
 }
 
 sub end($$)
 {
     my ($self, $conn) = @_;
+
     return unless defined($conn);
 
     $conn->cmd("exit");
@@ -135,6 +166,7 @@ sub end($$)
 sub disconnect($$)
 {
     my ($self, $conn) = @_;
+
     return unless defined($conn);
 
     $conn->close;

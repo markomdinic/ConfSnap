@@ -56,6 +56,36 @@ sub register()
 
 ##############################################################################################
 
+sub protocol($)
+{
+    my $self = shift;
+
+    return defined($self->{'protocol'}) ? $self->{'protocol'}:'ssh';
+}
+
+sub username($)
+{
+    my $self = shift;
+
+    return defined($self->{'username'}) ? $self->{'username'}:undef;
+}
+
+sub password($)
+{
+    my $self = shift;
+
+    return defined($self->{'password'}) ? $self->{'password'}:'';
+}
+
+sub admin_password($)
+{
+    my $self = shift;
+
+    return defined($self->{'enable'}) ? $self->{'enable'}:'';
+}
+
+##############################################################################################
+
 sub connect($$)
 {
     my ($self, $host) = @_;
@@ -65,19 +95,19 @@ sub connect($$)
     my $conn;
 
     # Connect using SSH ?
-    if($self->{'protocol'} eq "ssh") {
+    if($self->protocol eq 'ssh') {
 	# Safely load Net::OpenSSH on demand
 	$self->api->load_module('Net::OpenSSH')
 	    or return undef;
 	# Prepare credentials
-	my $user = $self->{'username'};
-	return undef unless(defined($user) && $user ne "");
-	my $pass = $self->{'password'};
-	return undef unless(defined($pass) && $pass ne "");
+	my $user = $self->username;
+	return undef unless defined($user);
+	my $pass = $self->password;
+	return undef unless defined($pass);
 	# Create new SSH connection
 	$conn = Net::OpenSSH->new($host, 'user' => $user, 'password' => $pass);
     # Connect using telnet ?
-    } elsif($self->{'protocol'} eq "telnet") {
+    } elsif($self->protocol eq 'telnet') {
 	# Safely load Net::Telnet on demand
 	$self->api->load_module('Net::Telnet')
 	    or return undef;
@@ -86,7 +116,7 @@ sub connect($$)
 	# Telnet to ASA device
 	$conn->open($host);
     # Connect using https ?
-    } elsif($self->{'protocol'} eq "https") {
+    } elsif($self->protocol eq 'https') {
 	# Safely load Net::NetSSLeay on demand
 	$self->api->load_module('Net::SSLeay', 'get_https', 'make_headers')
 	    or return undef;
@@ -94,7 +124,7 @@ sub connect($$)
 	$self->api->load_module('MIME::Base64')
 	    or return undef;
 	# There's nothing to do here for Net::SSLeay,
-	# but we can pass host as connection handle,
+	# but we can pass host as the connection handle,
 	# since we must return something other than undef
 	# anyway
 	$conn = $host;
@@ -107,7 +137,7 @@ sub prompt($$)
 {
     my ($self, $conn) = @_;
 
-    return unless(defined($conn) && $self->{'protocol'} eq "telnet");
+    return unless(defined($conn) && $self->protocol eq 'telnet');
 
     return $conn->prompt('/[a-zA-Z0-9\_\-\+]+[>#]$/');
 }
@@ -116,14 +146,14 @@ sub auth($$)
 {
     my ($self, $conn) = @_;
 
-    return 1 unless(defined($conn) && $self->{'protocol'} eq "telnet");
+    return 1 unless(defined($conn) && $self->protocol eq 'telnet');
 
-    my $user = $self->{'username'};
-    return 0 unless(defined($user) && $user ne "");
-    my $pass = $self->{'password'};
-    return 0 unless(defined($pass) && $pass ne "");
-    my $enable = $self->{'enable'};
-    return 0 unless(defined($enable) && $enable ne "");
+    my $user = $self->username;
+    return 0 unless defined($user);
+    my $pass = $self->password;
+    return 0 unless defined($pass);
+    my $enable = $self->admin_password;
+    return 0 unless defined($enable);
 
     # Authenticate to ASA device
     $conn->login($user, $pass);
@@ -141,24 +171,24 @@ sub collect($$)
     my @cfg = ();
 
     # Connected via SSH ?
-    if($self->{'protocol'} eq "ssh") {
-	my $enable = $self->{'enable'};
-	return undef unless(defined($enable) && $enable ne "");
+    if($self->protocol eq 'ssh') {
+	my $enable = $self->admin_password;
+	return undef unless defined($enable);
 	# Collect running config
 	@cfg = $conn->capture("q\benable\n".$enable."\nterminal pager 0\nshow running-config\nexit\n");
     # Connected via telnet ?
-    } elsif($self->{'protocol'} eq "telnet") {
+    } elsif($self->protocol eq 'telnet') {
 	# Disable pagination
 	$conn->cmd("terminal pager 0");
 	# Collect running config
 	@cfg = $conn->cmd("show running-config");
     # Connected via https ?
-    } elsif($self->{'protocol'} eq "https") {
+    } elsif($self->protocol eq 'https') {
 	# Prepare credentials
-	my $user = $self->{'username'};
-	return undef unless(defined($user) && $user ne "");
-	my $pass = $self->{'password'};
-	return undef unless(defined($pass) && $pass ne "");
+	my $user = $self->username;
+	return undef unless defined($user);
+	my $pass = $self->password;
+	return undef unless defined($pass);
 	# Generate authentication hash
 	my $auth = 'Basic '.MIME::Base64::encode($user.":".$pass);
 	# Request configuration over HTTPS
@@ -196,7 +226,7 @@ sub end($$)
 {
     my ($self, $conn) = @_;
 
-    return unless(defined($conn) && $self->{'protocol'} eq "telnet");
+    return unless(defined($conn) && $self->protocol eq 'telnet');
 
     $conn->cmd("exit");
 }
@@ -205,7 +235,7 @@ sub disconnect($$)
 {
     my ($self, $conn) = @_;
 
-    return unless(defined($conn) && $self->{'protocol'} eq "telnet");
+    return unless(defined($conn) && $self->protocol eq 'telnet');
 
     $conn->close;
 }

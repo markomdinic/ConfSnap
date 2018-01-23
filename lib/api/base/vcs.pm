@@ -662,5 +662,32 @@ sub diff($$$$)
 
     return wantarray ? @diff_lines:$diff_text;
 }
+#
+# Remove specified path from VCS repository
+#
+#  This method removes all data contained within specified
+#  path and the path itself from the VCS repository.
+#
+#   Input:	1. self object reference
+#		2. full path to a filesystem object to remove
+#
+#   Output:	1. TRUE, if suceeded
+#		   FALSE, if failed
+#
+sub remove($;$)
+{
+    my ($self, $path) = @_;
+
+    # Change to repo dir
+    my $wd = $self->cd();
+
+    # Remove path from the repository
+    my $res = $self->{'git'}->rm($path);
+
+    # Change back to prev dir
+    chdir($wd);
+
+    return $res;
+}
 
 1;
