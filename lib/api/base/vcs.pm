@@ -614,7 +614,7 @@ sub checkout($;$)
 		    # Checkout selected commit
 		    $self->{'git'}->checkout($snapshot):
 		    # If no id was given, checkout master branch
-		    $res = $self->{'git'}->checkout('master');
+		    $self->{'git'}->checkout('master');
 
     # Change back to prev dir
     chdir($wd);
