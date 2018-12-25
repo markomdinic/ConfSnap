@@ -91,9 +91,24 @@ my $CONF_TEMPLATE = SECTION(
     DIRECTIVE('syslog_level', MAP(FROM 'LOG_LEVELS', STORE(TO 'CONFIG', KEY 'syslog_level'), DEFAULT 'info')),
     DIRECTIVE('method_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'CONFIG', KEY 'method_timeout'), DEFAULT '10')),
     DIRECTIVE('module_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'CONFIG', KEY 'module_timeout'), DEFAULT '60')),
+    DIRECTIVE('my_name', ARG(CF_STRING, STORE(TO 'CONFIG', KEY 'my_name'), DEFAULT 'ConfSnap')),
+    DIRECTIVE('my_email', ARG(CF_STRING, STORE(TO 'CONFIG', KEY 'my_email')), DEFAULT 'confsnap@localhost'),
     DIRECTIVE('colorize_output', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'colorize_output'), DEFAULT 'yes')),
+    DIRECTIVE('report_changes', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'report_changes'), DEFAULT 'no')),
     DIRECTIVE('repository_datadir', ARG(CF_PATH, STORE(TO 'CONFIG', KEY 'datadir'), DEFAULT '/var/confsnap/')),
     DIRECTIVE('remote_repository_url', ARG(CF_STRING, STORE(TO 'CONFIG', KEY 'remote_repository_url'))),
+    DIRECTIVE('report_changes', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'report_changes'), DEFAULT 'no')),
+    DIRECTIVE('report_files', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'report_files'), DEFAULT 'yes')),
+    DIRECTIVE('report_diffs', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'report_diffs'), DEFAULT 'yes')),
+    DIRECTIVE('report_recipients', ARG(CF_STRING|CF_ARRAY, STORE(TO 'CONFIG', KEY 'report_recipients'))),
+    DIRECTIVE('use_smtp', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'use_smtp'), DEFAULT 'no')),
+    DIRECTIVE('smtp_server', ARG(CF_STRING, STORE(TO 'CONFIG', KEY 'smtp_server'))),
+    DIRECTIVE('smtp_port', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'CONFIG', KEY 'smtp_port'), DEFAULT '25')),
+    DIRECTIVE('smtp_auth', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'smtp_auth'), DEFAULT 'no')),
+    DIRECTIVE('smtp_ssl', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'smtp_ssl'), DEFAULT 'no')),
+    DIRECTIVE('smtp_tls', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'smtp_tls'), DEFAULT 'no')),
+    DIRECTIVE('smtp_user', ARG(CF_STRING, STORE(TO 'CONFIG', KEY 'smtp_user'))),
+    DIRECTIVE('smtp_pass', ARG(CF_STRING, STORE(TO 'CONFIG', KEY 'smtp_pass'))),
     DIRECTIVE('device', SECTION_NAME, REQUIRE(
 	DIRECTIVE('host', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$NESTED_SECTION' => { 'host' => '$VALUE' } })), REQUIRE(
 	    DIRECTIVE('type', ARG(CF_STRING|CF_SECTION, POSTPARSER(&load_device_module), STORE(TO 'DEVICE', KEY { '$NESTED_SECTION' => { 'type' => '$VALUE' } })), OPTIONAL(
@@ -554,7 +569,13 @@ sub confsnap_fetch(;@)
     }
 
     # Commit changes (if any)
-    $API->commit($API->local_log);
+    if($API->commit($API->local_log)) {
+	# If change reporting is enabled ...
+	if($CONFIG{'report_changes'}) {
+	    # ... generate and send report email
+	    $API->report_config_changes($API->local_log);
+	}
+    }
 
     # Remove recurring event
     $EV->destroy_recurring_event($event);

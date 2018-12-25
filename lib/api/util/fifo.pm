@@ -46,7 +46,8 @@ use constant {
 #
 #   Output:	1. FIFO queue object reference
 #
-sub new($$) {
+sub new($$)
+{
     my $class = shift;
 
     my $self = {
@@ -68,7 +69,8 @@ sub new($$) {
 #   Output:	1. TRUE, if object was inserted
 #		   FALSE, if inserting failed
 #
-sub put($$) {
+sub put($$)
+{
     my ($self, $obj) = @_;
 
     return 0 if(!defined($obj) ||
@@ -100,7 +102,8 @@ sub put($$) {
 #   Output:	1. a reference to the first 'object'
 #		   undef, if queue was empty
 #
-sub get($) {
+sub get($)
+{
     my $self = shift;
 
     my $node = $self->{'fifo'}->get_head;
@@ -125,7 +128,8 @@ sub get($) {
 #   Output:	1. TRUE, if object was removed
 #		   FALSE, if object was not found
 #
-sub remove($$) {
+sub remove($$)
+{
     my ($self, $obj) = @_;
 
     return 0 unless defined($obj);
@@ -154,7 +158,8 @@ sub remove($$) {
 #   Output:	1. TRUE, if object was found
 #		   FALSE, if object was not found
 #
-sub exists($$) {
+sub exists($$)
+{
     my ($self, $obj) = @_;
 
     return 0 unless defined($obj);
@@ -170,7 +175,8 @@ sub exists($$) {
 #
 #   Output:	1. number of objects in the queue
 #
-sub count($) {
+sub count($)
+{
     my $self = shift;
 
     return scalar(keys %{$self->{'index'}});
@@ -182,7 +188,8 @@ sub count($) {
 #
 #   Output:	nothing
 #
-sub flush($) {
+sub flush($)
+{
     my $self = shift;
 
     foreach my $obj (keys %{$self->{'index'}}) {

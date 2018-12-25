@@ -1,5 +1,5 @@
 #
-# api::base::vcs.pm
+# api::component::vcs.pm
 #
 # Copyright (c) 2018 Marko Dinic. All rights reserved.
 #
@@ -17,7 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-package api::base::vcs;
+package api::component::vcs;
 
 ##########################################################################################
 
@@ -41,9 +41,10 @@ use api::util::git;
 #   Input:	1. class name (passed implicitly)
 #		2. hashref to the global configuration
 #
-#   Output:	1. api::base::vcs object reference
+#   Output:	1. api::component::vcs object reference
 #
-sub new($$) {
+sub new($$)
+{
     my ($class, $conf) = @_;
 
     # Global configuration must be defined
@@ -158,12 +159,17 @@ sub config_repository($$)
 
     # If path is a GIT repository ...
     if($self->is_repository($path)) {
-	my $user = `whoami`;
+	my $name = (defined($self->{'conf'}->{'my_name'}) &&
+		    $self->{'conf'}->{'my_name'} ne '') ?
+			    $self->{'conf'}->{'my_name'}:'ConfSnap';
+	my $email = (defined($self->{'conf'}->{'my_email'}) &&
+		     $self->{'conf'}->{'my_email'} ne '') ?
+			    $self->{'conf'}->{'my_email'}:`whoami`;
 	# ... change to GIT repository dir ...
 	my $wd = $self->cd($path);
 	# ... configure it with basic parameters
-	$res = $self->{'git'}->config('user.name', 'ConfSnap') &&
-	       $self->{'git'}->config('user.email', (defined($user) && $user ne '') ? $user:'confsnap');
+	$res = $self->{'git'}->config('user.name', $name) &&
+	       $self->{'git'}->config('user.email', (defined($email) && $email ne '') ? $email:'confsnap');
 	# ... and change back to previous working dir
 	chdir($wd);
     }
@@ -245,8 +251,8 @@ sub reset($;$)
 #
 #   Input:	1. self object reference
 #
-#   Output:	1. TRUE, if suceeded
-#		   FALSE, if failed
+#   Output:	1. list of files, if suceeded
+#		   empty list, if failed
 #
 sub changed_files($)
 {
@@ -263,7 +269,7 @@ sub changed_files($)
     # Change back to prev dir
     chdir($wd);
 
-    return @files;
+    return (scalar(@files) > 0 && defined($files[0])) ? @files:();
 }
 #
 # Commit changes to history

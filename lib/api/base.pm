@@ -26,23 +26,22 @@ use warnings;
 
 ##########################################################################################
 
-#use Socket;
-#use IO::Handle;
 use Sys::Syslog;
-#use POSIX qw(:signal_h :sys_wait_h);
 
 ##########################################################################################
 
-use api::base::logger;
-use api::base::storage;
-use api::base::vcs;
+use api::component::logger;
+use api::component::storage;
+use api::component::email;
+use api::component::vcs;
 
 ##########################################################################################
 
 our @ISA = qw(
-    api::base::logger
-    api::base::storage
-    api::base::vcs
+    api::component::logger
+    api::component::storage
+    api::component::email
+    api::component::vcs
 );
 
 ##########################################################################################
@@ -67,18 +66,23 @@ sub new($$$)
     # Hashref to the global configuration is mandatory
     return undef unless(defined($conf) && ref($conf) eq "HASH");
 
-    # Invoke parent constructors
-    my $logger = api::base::logger->new($conf);
+    # Invoke base components' constructors
+    my $logger = api::component::logger->new($conf);
     unless(defined($logger)) {
 	print STDERR "Failed to initialize logger\n";
 	return undef;
     }
-    my $storage = api::base::storage->new($conf);
+    my $storage = api::component::storage->new($conf);
     unless(defined($storage)) {
 	print STDERR "Failed to initialize local data storage\n";
 	return undef;
     }
-    my $vcs = api::base::vcs->new($conf);
+    my $email = api::component::email->new($conf);
+    unless(defined($email)) {
+	print STDERR "Failed to initialize mailer.\n";
+	return undef;
+    }
+    my $vcs = api::component::vcs->new($conf);
     unless(defined($vcs)) {
 	print STDERR "Failed to initialize VCS repository. Perhaps datadir is missing.\n";
 	return undef;
@@ -88,6 +92,7 @@ sub new($$$)
     my $self = bless({
 	%{$logger},
 	%{$storage},
+	%{$email},
 	%{$vcs},
 	'conf' => $conf,
 	'devs' => $devs
@@ -205,6 +210,57 @@ sub retrieve_device_config($$$)
 
     # Retrieve device configuration from VCS repository
     return $self->retrieve($path);
+}
+#
+# Send change report via email
+#
+#   Input:	1. self object reference
+#		2. report content
+#
+#   Output:	1. TRUE, if succeeded
+#		   FALSE, if failed
+#
+sub report_config_changes($$)
+{
+    my ($self, $report) = @_;
+
+    # Don't waste time on empty reports
+    return 0 unless(defined($report) && $report ne '');
+
+    # Get the list of notification recipients
+    my $recipients = $self->{'conf'}->{'report_recipients'};
+
+    # At least one recipient must be defined
+    return 0 unless(defined($recipients) &&
+		    defined($recipients->[0]) && 
+		    $recipients->[0] ne '');
+
+    # Include the list of changed files in report ?
+    if($self->{'conf'}->{'report_files'}) {
+	# Get the list of changed files
+	my @files = $self->changed_files();
+	if(@files) {
+	    # Add the list to the report
+	    $report .= "\nFiles that have changed:\n\n".join("\n", @files)."\n";
+	}
+    }
+
+    # Include change details in report ?
+    if($self->{'conf'}->{'report_diffs'}) {
+	# Get changes since previous commit
+	my @diff = $self->diff('.', 'HEAD^1', 'HEAD');
+	if(@diff) {
+	    # Add diffs to the report
+	    $report .= "\nChanges that have occured:\n\n".join("\n", @diff)."\n";
+	}
+    }
+
+    # Send report email
+    return $self->send_email($self->{'conf'}->{'my_name'},
+			     $self->{'conf'}->{'my_email'},
+			     $recipients,
+			     '[ConfSnap] Device configuration changes',
+			     $report);
 }
 #
 # Proxy function calls to the main program.

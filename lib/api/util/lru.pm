@@ -53,7 +53,8 @@ use constant {
 #
 #   Output:	1. LRU object reference
 #
-sub new($$) {
+sub new($$)
+{
     my ($class, $life) = @_;
 
     return undef unless defined($life) &&
@@ -81,7 +82,8 @@ sub new($$) {
 #   Output:	1. TRUE, if object was inserted
 #		   FALSE, if inserting failed
 #
-sub insert($$;$) {
+sub insert($$;$)
+{
     my ($self, $obj, $life) = @_;
 
     return 0 if(!defined($obj) ||
@@ -129,7 +131,8 @@ sub insert($$;$) {
 #   Output:	1. TRUE, if object was removed
 #		   FALSE, if object was not found
 #
-sub remove($$) {
+sub remove($$)
+{
     my ($self, $obj) = @_;
 
     return 0 unless defined($obj);
@@ -161,7 +164,8 @@ sub remove($$) {
 #   Output:	1. TRUE, if object was refreshed
 #		   FALSE, if object was not found
 #
-sub refresh($$) {
+sub refresh($$)
+{
     my ($self, $obj) = @_;
 
     return 0 unless defined($obj);
@@ -192,7 +196,8 @@ sub refresh($$) {
 #   Output:	1. seconds until the 'object' expires
 #		   undef, if object doesn't exist
 #
-sub due($$) {
+sub due($$)
+{
     my ($self, $obj) = @_;
 
     return undef unless defined($obj);
@@ -213,7 +218,8 @@ sub due($$) {
 #   Output:	1. seconds until the oldest 'object' expires
 #		   undef, if cache is empty
 #
-sub firstdue($) {
+sub firstdue($)
+{
     my $self = shift;
 
     my $node = $self->{'lru'}->head;
@@ -231,7 +237,8 @@ sub firstdue($) {
 #   Output:	1. a reference to the oldest 'object'
 #		   undef, if no (more) expired objects
 #
-sub first($) {
+sub first($)
+{
     my $self = shift;
 
     my $node = $self->{'lru'}->get_head;
@@ -260,7 +267,8 @@ sub first($) {
 #   Output:	1. a reference to the expired 'object'
 #		   undef, if no (more) expired objects
 #
-sub expired($) {
+sub expired($)
+{
     my $self = shift;
 
     my $node = $self->{'lru'}->head;
@@ -289,7 +297,8 @@ sub expired($) {
 #   Output:	1. TRUE, if object was found
 #		   FALSE, if object was not found
 #
-sub exists($$) {
+sub exists($$)
+{
     my ($self, $obj) = @_;
 
     return 0 unless defined($obj);
@@ -305,7 +314,8 @@ sub exists($$) {
 #
 #   Output:	1. number of objects in the cache
 #
-sub count($) {
+sub count($)
+{
     my $self = shift;
 
     return scalar(keys %{$self->{'index'}});
@@ -317,7 +327,8 @@ sub count($) {
 #
 #   Output:	1. number of objects removed
 #
-sub flush($) {
+sub flush($)
+{
     my $self = shift;
     my $count = 0;
 

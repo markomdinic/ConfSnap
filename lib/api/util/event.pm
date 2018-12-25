@@ -56,7 +56,8 @@ use constant {
 #
 #   Output:	1. api::util::event object reference
 #
-sub new($) {
+sub new($)
+{
     my $class = shift;
 
     my $read_poll = IO::Poll->new();
@@ -110,7 +111,8 @@ sub new($) {
 #
 #   Output:	1. previous state
 #
-sub start($) {
+sub start($)
+{
     my $self = shift;
 
     # Get previous state
@@ -134,7 +136,8 @@ sub start($) {
 #
 #   Output:	1. previous state
 #
-sub shutdown($) {
+sub shutdown($)
+{
     my $self = shift;
 
     # Get previous state
@@ -160,7 +163,8 @@ sub shutdown($) {
 #
 #   Output:	1. previous state
 #
-sub stop($) {
+sub stop($)
+{
     my $self = shift;
 
     # Get previous state
@@ -181,7 +185,8 @@ sub stop($) {
 #   Output:	1. TRUE, if event engine is running
 #		   FALSE, if event engine is in other state
 #
-sub running($) {
+sub running($)
+{
     my $self = shift;
 
     return ($self->{'state'} == EV_RUNNING) ? 1:0;
@@ -197,7 +202,8 @@ sub running($) {
 #   Output:	1. TRUE, if event engine is shutting down
 #		   FALSE, if event engine is in other state
 #
-sub shutting_down($) {
+sub shutting_down($)
+{
     my $self = shift;
 
     return ($self->{'state'} == EV_SHUTDOWN) ? 1:0;
@@ -213,7 +219,8 @@ sub shutting_down($) {
 #   Output:	1. TRUE, if event engine is stopped
 #		   FALSE, if event engine is in other state
 #
-sub stopped($) {
+sub stopped($)
+{
     my $self = shift;
 
     return ($self->{'state'} == EV_STOPPED) ? 1:0;
@@ -263,7 +270,8 @@ sub stopped($) {
 #   Output:	1. termination event hashref, if successful
 #		   undef, if failed
 #
-sub create_termination_event($%) {
+sub create_termination_event($%)
+{
     my $self = shift;
     my $param = {@_};
 
@@ -420,7 +428,8 @@ sub create_termination_event($%) {
 #   Output:	1. reload event hashref, if successful
 #		   undef, if failed
 #
-sub create_reload_event($%) {
+sub create_reload_event($%)
+{
     my $self = shift;
     my $param = {@_};
 
@@ -586,7 +595,8 @@ sub create_reload_event($%) {
 #   Output:	1. reaping event hashref, if successful
 #		   undef, if failed
 #
-sub create_reaping_event($%) {
+sub create_reaping_event($%)
+{
     my $self = shift;
     my $param = {@_};
 
@@ -752,7 +762,8 @@ sub create_reaping_event($%) {
 #   Output:	1. recurring event hashref, if successful
 #		   undef, if failed
 #
-sub create_recurring_event($%) {
+sub create_recurring_event($%)
+{
     my $self = shift;
     my $param = {@_};
 
@@ -902,7 +913,8 @@ sub create_recurring_event($%) {
 #   Output:	1. timer event hashref, if successful
 #		   undef, if failed
 #
-sub create_timer_event($%) {
+sub create_timer_event($%)
+{
     my $self = shift;
     my $param = {@_};
 
@@ -1047,7 +1059,8 @@ sub create_timer_event($%) {
 #   Output:	1. file handle, if successful
 #		   undef, if failed
 #
-sub create_io_event($%) {
+sub create_io_event($%)
+{
     my $self = shift;
     my $param = {@_};
 
@@ -1187,7 +1200,8 @@ sub create_io_event($%) {
 #
 #   Output:	none
 #
-sub destroy_termination_event($$) {
+sub destroy_termination_event($$)
+{
     my ($self, $event) = @_;
 
     return unless(defined($event) &&
@@ -1215,7 +1229,8 @@ sub destroy_termination_event($$) {
 #
 #   Output:	none
 #
-sub destroy_reload_event($$) {
+sub destroy_reload_event($$)
+{
     my ($self, $event) = @_;
 
     return unless(defined($event) &&
@@ -1240,7 +1255,8 @@ sub destroy_reload_event($$) {
 #
 #   Output:	none
 #
-sub destroy_reaping_event($$) {
+sub destroy_reaping_event($$)
+{
     my ($self, $event) = @_;
 
     return unless(defined($event) &&
@@ -1265,7 +1281,8 @@ sub destroy_reaping_event($$) {
 #
 #   Output:	none
 #
-sub destroy_recurring_event($$) {
+sub destroy_recurring_event($$)
+{
     my ($self, $event) = @_;
 
     return unless(defined($event) &&
@@ -1289,7 +1306,8 @@ sub destroy_recurring_event($$) {
 #
 #   Output:	none
 #
-sub destroy_timer_event($$) {
+sub destroy_timer_event($$)
+{
     my ($self, $event) = @_;
 
     return unless(defined($event) &&
@@ -1309,7 +1327,8 @@ sub destroy_timer_event($$) {
 #
 #   Output:	none
 #
-sub destroy_io_event($$;$) {
+sub destroy_io_event($$;$)
+{
     my $self = shift;
     my $file = shift;
     my $op = shift;
@@ -1376,7 +1395,8 @@ sub destroy_io_event($$;$) {
 #   Output:	1. termination event hashref, if successful
 #		   undef, if failed
 #
-sub modify_termination_event($$;%) {
+sub modify_termination_event($$;%)
+{
     my $self = shift;
     my $event = shift;
     my %param = (@_);
@@ -1399,11 +1419,6 @@ sub modify_termination_event($$;%) {
 	# Replace event params with new ones
 	$event->{$key} = $param{$key};
     }
-
-    # Use existing event as parameter hash
-    # for new event that we are about to
-    # register in place of current one.
-#    $event->{'event'} = $event;
 
     # Remaining delay of event that was
     # already triggered (if any)
@@ -1443,7 +1458,8 @@ sub modify_termination_event($$;%) {
 #   Output:	1. reload event hashref, if successful
 #		   undef, if failed
 #
-sub modify_reload_event($$;%) {
+sub modify_reload_event($$;%)
+{
     my $self = shift;
     my $event = shift;
     my %param = (@_);
@@ -1466,11 +1482,6 @@ sub modify_reload_event($$;%) {
 	# Replace event params with new ones
 	$event->{$key} = $param{$key};
     }
-
-    # Use existing event as parameter hash
-    # for new event that we are about to
-    # register in place of current one.
-#    $event->{'event'} = $event;
 
     # Remaining delay of event that was
     # already triggered (if any)
@@ -1509,7 +1520,8 @@ sub modify_reload_event($$;%) {
 #   Output:	1. reaping event hashref, if successful
 #		   undef, if failed
 #
-sub modify_reaping_event($$;%) {
+sub modify_reaping_event($$;%)
+{
     my $self = shift;
     my $event = shift;
     my %param = (@_);
@@ -1532,11 +1544,6 @@ sub modify_reaping_event($$;%) {
 	# Replace event params with new ones
 	$event->{$key} = $param{$key};
     }
-
-    # Use existing event as parameter hash
-    # for new event that we are about to
-    # register in place of current one.
-#    $event->{'event'} = $event;
 
     # Remaining delay of event that was
     # already triggered (if any)
@@ -1575,7 +1582,8 @@ sub modify_reaping_event($$;%) {
 #   Output:	1. recurring event hashref, if successful
 #		   undef, if failed
 #
-sub modify_recurring_event($$;%) {
+sub modify_recurring_event($$;%)
+{
     my $self = shift;
     my $event = shift;
     my %param = (@_);
@@ -1598,11 +1606,6 @@ sub modify_recurring_event($$;%) {
 	# Replace event params with new ones
 	$event->{$key} = $param{$key};
     }
-
-    # Use existing event as parameter hash
-    # for new event that we are about to
-    # register in place of current one.
-#    $event->{'event'} = $event;
 
     # Remaining delay of event that was
     # already triggered (if any)
@@ -1641,7 +1644,8 @@ sub modify_recurring_event($$;%) {
 #   Output:	1. timer event hashref, if successful
 #		   undef, if failed
 #
-sub modify_timer_event($$;%) {
+sub modify_timer_event($$;%)
+{
     my $self = shift;
     my $event = shift;
     my %param = (@_);
@@ -1663,11 +1667,6 @@ sub modify_timer_event($$;%) {
 	# Replace event params with new ones
 	$event->{$key} = $param{$key};
     }
-
-    # Use existing event as parameter hash
-    # for new event that we are about to
-    # register in place of current one.
-#    $event->{'event'} = $event;
 
     # Remove timer event
     $self->destroy_timer_event($event);
@@ -1702,7 +1701,8 @@ sub modify_timer_event($$;%) {
 #   Output:	1. file handle, if successful
 #		   undef, if failed
 #
-sub modify_io_event($$$;%) {
+sub modify_io_event($$$;%)
+{
     my $self = shift;
     my $file = shift;
     my $op = shift;
@@ -1739,11 +1739,6 @@ sub modify_io_event($$$;%) {
 	# Replace event params with new ones
 	$event->{$key} = $param{$key};
     }
-
-    # Use existing event as parameter hash
-    # for new event that we are about to
-    # register in place of current one.
-#    $event->{'event'} = $event;
 
     # Remaining delay of event that was
     # already triggered (if any)
@@ -1783,7 +1778,8 @@ sub modify_io_event($$$;%) {
 #   Output:	1. event hashref, if registered event was found,
 #		   undef, if nothing was found
 #
-sub get_event($$;$) {
+sub get_event($$;$)
+{
     my $self = shift;
     my $param = shift;
     my $op = shift;
@@ -1832,7 +1828,8 @@ sub get_event($$;$) {
 #   Output:	1. TRUE, if succeeded,
 #		   FALSE, if failed
 #
-sub delay_event($$$) {
+sub delay_event($$$)
+{
     my ($self, $event, $delay) = @_;
 
     # Input params must be sane
@@ -1843,24 +1840,12 @@ sub delay_event($$$) {
     if($event->{'type'} eq 'recurring') {
 	# Remove recurring event
 	$self->destroy_recurring_event($event);
-	# Add delay interval
-#	$event->{'delay'} = $delay;
-	# Use existing event hashref
-	# for new event that we are
-	# about to register.
-#	$event->{'event'} = $event;
 	# Re-schedule recurring event with delay
 	$self->create_recurring_event(%{$event}, 'delay' => $delay, 'event' => $event);
     # Timer event delay ?
     } elsif($event->{'type'} eq 'timer') {
 	# Remove timer event
 	$self->destroy_timer_event($event);
-	# Add delay interval
-#	$event->{'delay'} = $delay;
-	# Use existing event hashref
-	# for new event that we are
-	# about to register.
-#	$event->{'event'} = $event;
 	# Re-schedule timer event with delay
 	$self->create_timer_event(%{$event}, 'delay' => $delay, 'event' => $event);
     # Asynchronous event delay ?
@@ -1889,7 +1874,8 @@ sub delay_event($$$) {
 #		   previous and current invocation of this
 #		   method.
 #
-sub poll($) {
+sub poll($)
+{
     my $self = shift;
     my @term_handlers = ();
     my @reload_handlers = ();
@@ -2309,7 +2295,8 @@ sub poll($) {
 #   Output:	whatever the called function returns,
 #		or explicitly undef, if timed out
 #
-sub invoke_handler($%) {
+sub invoke_handler($%)
+{
     my $self = shift;
     my %param = (@_);
 
@@ -2419,7 +2406,8 @@ sub invoke_handler($%) {
 #		   invocation via invoke_handler() failed,
 #		   undef, if handler invocation succeeded
 #
-sub error_message($) {
+sub error_message($)
+{
     my $self = shift;
 
     return $self->{'_errormsg'};
@@ -2431,7 +2419,8 @@ sub error_message($) {
 #
 #   Output:	nothing
 #
-sub flush($) {
+sub flush($)
+{
     my $self = shift;
 
     if(defined($self->{'timer'}) &&

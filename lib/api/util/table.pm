@@ -46,7 +46,8 @@ use constant {
 #
 #   Output:	1. array object reference
 #
-sub new($$) {
+sub new($$)
+{
     my $class = shift;
 
     my $self = {
@@ -68,7 +69,8 @@ sub new($$) {
 #   Output:	1. TRUE, if object was inserted
 #		   FALSE, if inserting failed
 #
-sub add($$) {
+sub add($$)
+{
     my ($self, $obj) = @_;
 
     return 0 if(!defined($obj) ||
@@ -98,7 +100,8 @@ sub add($$) {
 #   Output:	1. TRUE, if object was removed
 #		   FALSE, if object was not found
 #
-sub remove($$) {
+sub remove($$)
+{
     my ($self, $obj) = @_;
 
     return 0 unless defined($obj);
@@ -133,7 +136,8 @@ sub remove($$) {
 #   Output:	1. TRUE, if object was inserted
 #		   FALSE, if inserting failed
 #
-sub insert_before($$) {
+sub insert_before($$)
+{
     my ($self, $obj, $ref) = @_;
 
     return 0 if(!defined($obj) || !defined($ref) ||
@@ -171,7 +175,8 @@ sub insert_before($$) {
 #   Output:	1. TRUE, if object was inserted
 #		   FALSE, if inserting failed
 #
-sub insert_after($$) {
+sub insert_after($$)
+{
     my ($self, $ref, $obj) = @_;
 
     return 0 if(!defined($obj) || !defined($ref) ||
@@ -205,7 +210,8 @@ sub insert_after($$) {
 #   Output:	1. a reference to the first 'object'
 #		   undef, if table was empty
 #
-sub first($) {
+sub first($)
+{
     my $self = shift;
 
     my $node = $self->{'table'}->head;
@@ -224,7 +230,8 @@ sub first($) {
 #   Output:	1. a reference to the last 'object'
 #		   undef, if table was empty
 #
-sub last($) {
+sub last($)
+{
     my $self = shift;
 
     my $node = $self->{'table'}->tail;
@@ -244,7 +251,8 @@ sub last($) {
 #   Output:	1. a reference to the next 'object'
 #		   undef, if 'object' was the last one
 #
-sub next($$) {
+sub next($$)
+{
     my ($self, $obj) = @_;
 
     return 0 unless defined($obj);
@@ -271,7 +279,8 @@ sub next($$) {
 #   Output:	1. a reference to the previous 'object'
 #		   undef, if 'object' was the first one
 #
-sub prev($$) {
+sub prev($$)
+{
     my ($self, $obj) = @_;
 
     return 0 unless defined($obj);
@@ -295,7 +304,8 @@ sub prev($$) {
 #   Output:	1. TRUE, if object was found
 #		   FALSE, if object was not found
 #
-sub exists($$) {
+sub exists($$)
+{
     my ($self, $obj) = @_;
 
     return 0 unless defined($obj);
@@ -311,7 +321,8 @@ sub exists($$) {
 #
 #   Output:	1. number of objects in the table
 #
-sub count($) {
+sub count($)
+{
     my $self = shift;
 
     return scalar(keys %{$self->{'index'}});
@@ -323,7 +334,8 @@ sub count($) {
 #
 #   Output:	nothing
 #
-sub flush($) {
+sub flush($)
+{
     my $self = shift;
 
     foreach my $obj (keys %{$self->{'index'}}) {

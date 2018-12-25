@@ -112,8 +112,11 @@ sub git($;@)
     # Format full git command line
     my $cmd = $self->{'cmd'}." ".join(' ', @_)." 2>/dev/null";
 
-    # Run git command and return it's stdout
-    return `$cmd`;
+    # Run git command ...
+    my $output = `$cmd`;
+
+    # ... and return it's stdout
+    return ($? >> 8) ? undef:$output;
 }
 #
 # git init

@@ -14,10 +14,42 @@ syslog_level		info
 method_timeout		10
 module_timeout		60
 
-repository_datadir	/opt/confsnap/repository
+# Colorize our diagnostic output
+colorize_output		yes
+
+# Our identity, recorded in configuration change history.
+# Also used as sender identity in change report emails.
+my_name			ConfSnap
+my_email		confsnap@localhost.localdomain
+
+# Main configuration repository
+repository_datadir	/var/lib/confsnap
+
+# Optional remote configuration repository
 remote_repository_url	git@git.your.network:configurations/network-device-configurations.git
 
-colorize_output		yes
+# Send report email when change is recorded
+report_changes		yes
+
+# Include the list of changed files in the report
+report_files		yes
+# Include change details in the report
+report_diffs		yes
+
+# Space delimited list of report recipients
+report_recipients	marko.dinic@netcast.rs
+
+# Send report using SMTP instead of local mailer
+use_smtp		yes
+
+# SMTP parameters
+smtp_server		smtp.example.com
+smtp_port		587
+smtp_ssl		no
+smtp_tls		yes
+smtp_auth		yes
+smtp_user		reportsender
+smtp_pass		sendersecret
 
 ########################################################################################
 ##

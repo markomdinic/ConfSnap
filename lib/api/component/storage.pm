@@ -1,5 +1,5 @@
 #
-# api::base::storage.pm
+# api::component::storage.pm
 #
 # Copyright (c) 2018 Marko Dinic. All rights reserved.
 #
@@ -17,7 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-package api::base::storage;
+package api::component::storage;
 
 ##########################################################################################
 
@@ -36,7 +36,7 @@ use File::Path;
 #   Input:	1. class name (passed implicitly)
 #		2. hashref to the global configuration
 #
-#   Output:	1. api::base::storage object reference
+#   Output:	1. api::component::storage object reference
 #
 sub new($)
 {
@@ -44,7 +44,7 @@ sub new($)
 
     return undef unless(defined($conf) && ref($conf) eq "HASH");
 
-    return bless({ 'conf' => $conf }, $class);
+    return bless({}, $class);
 }
 #
 # Store content into file

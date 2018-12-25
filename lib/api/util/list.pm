@@ -48,7 +48,8 @@ use constant {
 #
 #   Output:	1. list object reference
 #
-sub new($) {
+sub new($)
+{
     my $class = shift;
 
     my $list = [undef, undef];
@@ -62,7 +63,8 @@ sub new($) {
 #   Output:	1. head node object reference
 #
 #
-sub head($) {
+sub head($)
+{
     my $list = shift;
     return $list->[HEAD];
 }
@@ -74,7 +76,8 @@ sub head($) {
 #   Output:	1. tail node object reference
 #
 #
-sub tail($) {
+sub tail($)
+{
     my $list = shift;
     return $list->[TAIL];
 }
@@ -86,7 +89,8 @@ sub tail($) {
 #
 #   Output:	none
 #
-sub add_head($$) {
+sub add_head($$)
+{
     my ($list, $node) =@_;
 
     return unless defined($list) &&
@@ -113,7 +117,8 @@ sub add_head($$) {
 #
 #   Output:	none
 #
-sub add_tail($$) {
+sub add_tail($$)
+{
     my ($list, $node) =@_;
 
     return unless defined($list) &&
@@ -139,7 +144,8 @@ sub add_tail($$) {
 #
 #   Output:	1. node object reference
 #
-sub get_head($) {
+sub get_head($)
+{
     my $list = shift;
 
     return undef unless defined($list);
@@ -169,7 +175,8 @@ sub get_head($) {
 #
 #   Output:	1. node object reference
 #
-sub get_tail($) {
+sub get_tail($)
+{
     my $list = shift;
 
     return undef unless defined($list);
@@ -200,7 +207,8 @@ sub get_tail($) {
 #
 #   Output:	none
 #
-sub rem_node($$) {
+sub rem_node($$)
+{
     my ($list, $node) = @_;
 
     return unless defined($list) &&
@@ -243,7 +251,8 @@ sub rem_node($$) {
 #
 #   Output:	none
 #
-sub insert_before($$$) {
+sub insert_before($$$)
+{
     my ($list, $node, $after) = @_;
 
     return unless defined($list) &&
@@ -275,7 +284,6 @@ sub insert_before($$$) {
 	$list->[TAIL] = $node;
 
     }
-
 }
 #
 # Insert a node immediately after the specified anchor node
@@ -287,7 +295,8 @@ sub insert_before($$$) {
 #
 #   Output:	none
 #
-sub insert_after($$$) {
+sub insert_after($$$)
+{
     my ($list, $before, $node) = @_;
 
     return unless defined($list) &&
@@ -331,7 +340,8 @@ sub insert_after($$$) {
 #
 #   Output:	1. node object reference
 #
-sub node($) {
+sub node($)
+{
     my $class = shift;
 
     my $node = [undef, undef];
@@ -345,7 +355,8 @@ sub node($) {
 #   Output:	1. next node object reference
 #
 #
-sub next($) {
+sub next($)
+{
     my $node = shift;
     return $node->[NEXT];
 }
@@ -357,7 +368,8 @@ sub next($) {
 #   Output:	1. previous node object reference
 #
 #
-sub prev($) {
+sub prev($)
+{
     my $node = shift;
     return $node->[PREV];
 }
@@ -368,7 +380,8 @@ sub prev($) {
 #
 #   Output:	nothing
 #
-sub flush($) {
+sub flush($)
+{
     my $self = shift;
 
     while($self->get_head) {};

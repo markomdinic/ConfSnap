@@ -1,5 +1,5 @@
 #
-# api::base::logger.pm
+# api::component::logger.pm
 #
 # Copyright (c) 2018 Marko Dinic. All rights reserved.
 #
@@ -17,7 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-package api::base::logger;
+package api::component::logger;
 
 ##########################################################################################
 
@@ -47,7 +47,7 @@ sub new($$)
 
     return undef unless(defined($conf) && ref($conf) eq "HASH");
 
-    return bless({ 'conf' => $conf }, $class);
+    return bless({}, $class);
 }
 #
 # Issue conditional syslog call
