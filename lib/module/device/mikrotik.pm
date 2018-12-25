@@ -115,15 +115,21 @@ sub connect($$)
 	my $pass = $self->password;
 	return undef unless defined($pass);
 	# Create new SSH client and connect to RouterOS device
-	my $ssh = Net::OpenSSH->new($host, 'user' => $user, 'password' => $pass);
+	my $ssh = Net::OpenSSH->new($host,
+				    'user' => $user,
+				    'password' => $pass);
+	# Abort on error
+	return undef if $ssh->error;
 	# Use SSH client as terminal slave
-	my ($pty, $pid) = $ssh->open2pty({stderr_to_stdout => 1});
+	my ($pty, $pid) = $ssh->open2pty({'stderr_to_stdout' => 1});
 	# Use telnet module as terminal handler
-	$conn = Net::Telnet->new(Fhopen => $pty, Telnetmode => 0, Timeout => $self->{'timeout'});
+	$conn = Net::Telnet->new('Fhopen' => $pty,
+				 'Telnetmode' => 0,
+				 'Timeout' => $self->{'timeout'});
     # Connect using telnet ?
     } elsif($self->protocol eq 'telnet') {
 	# Create new telnet client
-	$conn = Net::Telnet->new(Timeout => $self->{'timeout'});
+	$conn = Net::Telnet->new('Timeout' => $self->{'timeout'});
 	# Telnet to RouterOS device
 	$conn->open($host);
     }

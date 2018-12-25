@@ -85,7 +85,7 @@ sub connect($$)
     $self->api->load_module('Net::Telnet')
 	or return undef;
     # Create new telnet client
-    my $conn = Net::Telnet->new(Timeout => $self->{'timeout'});
+    my $conn = Net::Telnet->new('Timeout' => $self->{'timeout'});
     # Telnet to JunOS device
     $conn->open($host);
 

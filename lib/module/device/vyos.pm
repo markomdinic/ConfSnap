@@ -1,5 +1,5 @@
 #
-# module::device::asa.pm
+# module::device::vyos.pm
 #
 # Copyright (c) 2018 Marko Dinic. All rights reserved.
 #
@@ -17,7 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-package module::device::asa;
+package module::device::vyos;
 
 ##############################################################################################
 
@@ -43,9 +43,17 @@ our $CONF_TEMPLATE = SECTION(
     DIRECTIVE('protocol', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'protocol' => '$VALUE' } }), DEFAULT 'ssh')),
     DIRECTIVE('username', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'username' => '$VALUE' } }))),
     DIRECTIVE('password', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'password' => '$VALUE' } }))),
-    DIRECTIVE('enable', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'enable' => '$VALUE' } }))),
     DIRECTIVE('filter', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'filter' => '$VALUE' } })))
 );
+
+##############################################################################################
+
+use constant {
+    RE_LOGIN	=> '(?:[Uu]ser(?:name)?|[Ll]ogin):',
+    RE_PASSWD	=> '(?:[^\n\r]+\s+)?[Pp]ass(?:word)?:',
+    RE_PROMPT	=> '(?:\[edit\][\n\r]+)?[^\n\r\@\#\$]+\@[^\@\#\$]+[\#\$]',
+    RE_FAILED	=> '[Ll]ogin\s+[Ii]ncorrect\s*'
+};
 
 ##############################################################################################
 
@@ -60,28 +68,8 @@ sub protocol($)
 {
     my $self = shift;
 
-    return defined($self->{'protocol'}) ? $self->{'protocol'}:'ssh';
-}
-
-sub username($)
-{
-    my $self = shift;
-
-    return defined($self->{'username'}) ? $self->{'username'}:undef;
-}
-
-sub password($)
-{
-    my $self = shift;
-
-    return defined($self->{'password'}) ? $self->{'password'}:'';
-}
-
-sub admin_password($)
-{
-    my $self = shift;
-
-    return defined($self->{'enable'}) ? $self->{'enable'}:'';
+    return defined($self->{'protocol'}) ?
+		    $self->{'protocol'}:'ssh';
 }
 
 ##############################################################################################
@@ -94,40 +82,41 @@ sub connect($$)
 
     my $conn;
 
+    # Safely load Net::Telnet on demand
+    $self->api->load_module('Net::Telnet')
+	or return undef;
+
     # Connect using SSH ?
     if($self->protocol eq 'ssh') {
 	# Safely load Net::OpenSSH on demand
 	$self->api->load_module('Net::OpenSSH')
 	    or return undef;
-	# Prepare credentials
-	my $user = $self->username;
+	# Get login credentials
+	my $user = $self->{'username'};
 	return undef unless defined($user);
-	my $pass = $self->password;
+	my $pass = $self->{'password'};
 	return undef unless defined($pass);
-	# Create new SSH connection
-	$conn = Net::OpenSSH->new($host, 'user' => $user, 'password' => $pass);
+	# Create new SSH client and connect to VyOS device
+	my $ssh = Net::OpenSSH->new($host,
+				    'user' => $user,
+				    'password' => $pass,
+				    'master_stderr_discard' => 1);
+	# Abort on error
+	return undef if $ssh->error;
+	# Use SSH client as terminal slave
+	my ($pty, $pid) = $ssh->open2pty({'stderr_to_stdout' => 1});
+	# Use telnet module as terminal handler
+	$conn = Net::Telnet->new('Fhopen' => $pty,
+				 'Telnetmode' => 0,
+				 'Binmode' => 1,
+				 'Cmd_remove_mode' => 1,
+				 'Timeout' => $self->{'timeout'});
     # Connect using telnet ?
     } elsif($self->protocol eq 'telnet') {
-	# Safely load Net::Telnet on demand
-	$self->api->load_module('Net::Telnet')
-	    or return undef;
 	# Create new telnet client
 	$conn = Net::Telnet->new('Timeout' => $self->{'timeout'});
-	# Telnet to ASA device
+	# Telnet to VyOS device
 	$conn->open($host);
-    # Connect using https ?
-    } elsif($self->protocol eq 'https') {
-	# Safely load Net::NetSSLeay on demand
-	$self->api->load_module('Net::SSLeay', 'get_https', 'make_headers')
-	    or return undef;
-	# Safely load MIME::Base64 on demand
-	$self->api->load_module('MIME::Base64')
-	    or return undef;
-	# There's nothing to do here for Net::SSLeay,
-	# but we can pass host as the connection handle,
-	# since we must return something other than undef
-	# anyway
-	$conn = $host;
     }
 
     return $conn;
@@ -137,30 +126,40 @@ sub prompt($$)
 {
     my ($self, $conn) = @_;
 
-    return unless(defined($conn) && $self->protocol eq 'telnet');
-
-    return $conn->prompt('/[a-zA-Z0-9\_\-\+]+[>#]$/');
+    return $conn->prompt('/'.&RE_PROMPT.'/');
 }
+
 
 sub auth($$)
 {
     my ($self, $conn) = @_;
 
-    return 1 unless(defined($conn) && $self->protocol eq 'telnet');
+    return 0 unless(defined($conn));
 
-    my $user = $self->username;
-    return 0 unless defined($user);
-    my $pass = $self->password;
-    return 0 unless defined($pass);
-    my $enable = $self->admin_password;
-    return 0 unless defined($enable);
-
-    # Authenticate to ASA device
-    $conn->login($user, $pass);
-
-    # Change to privileged mode
-    $conn->cmd("q\benable\n".$enable."\n");
-
+    # Wait for login, password or command prompt
+    my ($p, $m) = $conn->waitfor('/'.&RE_LOGIN.'|'.&RE_PASSWD.'|'.&RE_PROMPT.'/');
+    # If we got login prompt ...
+    if($m =~ /@{[RE_LOGIN]}/) {
+	my $user = $self->{'username'};
+	return 0 unless defined($user);
+	# ... send username
+	$conn->put($user."\n");
+	# ... wait for password or command prompt
+	($p, $m) = $conn->waitfor('/'.&RE_PASSWD.'|'.&RE_PROMPT.'/');
+    }
+    # If we got password prompt ...
+    if($m =~ /@{[RE_PASSWD]}/) {
+	my $pass = $self->{'password'};
+	return 0 unless defined($pass);
+	# ... send password
+	$conn->put($pass."\n");
+	# ... wait for command prompt or login failed message
+	($p, $m) = $conn->waitfor('/'.&RE_FAILED.'|'.&RE_PROMPT.'/');
+	# If login failed, abort
+	return 0 if($m =~ /@{[RE_FAILED]}/);
+    }
+    # At this point we are at the command prompt
+    # one way or another (unless login failed).
     return 1;
 }
 
@@ -168,65 +167,53 @@ sub collect($$)
 {
     my ($self, $conn) = @_;
 
-    my @cfg = ();
-
-    # Connected via SSH ?
-    if($self->protocol eq 'ssh') {
-	my $enable = $self->admin_password;
-	return undef unless defined($enable);
-	# Collect running config
-	@cfg = $conn->capture("q\benable\n".$enable."\nterminal pager 0\nshow running-config\nexit\n");
-    # Connected via telnet ?
-    } elsif($self->protocol eq 'telnet') {
-	# Disable pagination
-	$conn->cmd("terminal pager 0");
-	# Collect running config
-	@cfg = $conn->cmd("show running-config");
-    # Connected via https ?
-    } elsif($self->protocol eq 'https') {
-	# Prepare credentials
-	my $user = $self->username;
-	return undef unless defined($user);
-	my $pass = $self->password;
-	return undef unless defined($pass);
-	# Generate authentication hash
-	my $auth = 'Basic '.MIME::Base64::encode($user.":".$pass);
-	# Request configuration over HTTPS
-	my ($content, $response, %headers) = get_https($conn, 443, "/config",
-						       make_headers('Authorization' => $auth));
-	# GET successful ?
-	if($response =~ /HTTP\/1\.[0-1]\s+200\s+(?:OK)?$/i) {
-	    # Split content into separate lines,
-	    # without stripping newlines
-	    @cfg = ($content =~ /([^\n\r]+[\n\r]+)/g);
-	}
-    }
-    # If we retrieved anything ...
+    # Disable pagination
+    $conn->cmd("terminal length 0");
+    # Enter configuration mode
+    $conn->cmd("configure");
+    # Collect configuration
+    my @cfg = $conn->cmd("show");
+    # If we got something ...
     if(@cfg) {
-	# Skip leading trash
-	while((my $l = shift @cfg)) {
-	    last if($l =~ /ASA\s+Version\s+\S+/i);
-	}
-	# Skip trailing trash
-	while((my $l = pop @cfg)) {
-	    last if($l =~ /^Cryptochecksum:/);
-	}
 	# If filter regexp is defined ...
 	if(defined($self->{'filter'}) && $self->{'filter'} ne "") {
 	    # ... remove all matching lines
 	    @cfg = grep(!/$self->{'filter'}/, @cfg);
 	}
     }
+    # Exit configuration mode
+    $conn->cmd("exit");
     # If we got config, return it as string.
     # Otherwise, return undef
     return (scalar(@cfg) > 0) ? join('', @cfg):undef;
 }
 
+sub remote($$$;$)
+{
+    my ($self, $remote, $conn, $host, $vrf) = @_;
+
+    my $proto = $remote->protocol;
+
+    if($proto eq 'ssh') {
+	# Get remote device's login username
+	my $user = $remote->{'username'};
+	return 0 unless defined($user);
+	# SSH to the router on the remote end
+	$conn->put("ssh ".((defined($vrf) && $vrf ne "") ? "vrf ".$vrf." ":"").$user.'@'.$host."\n");
+    } elsif($proto eq 'telnet') {
+	# Telnet to the device on the remote end
+	$conn->put("telnet ".((defined($vrf) && $vrf ne "") ? "vrf ".$vrf." ":"").$host."\n");
+    } else {
+	$self->api->logging('LOG_ERR', "Protocol %s is not supported by %s for indirect device access", $proto, ref($self));
+	return 0;
+    }
+
+    return 1;
+}
+
 sub end($$)
 {
     my ($self, $conn) = @_;
-
-    return unless(defined($conn) && $self->protocol eq 'telnet');
 
     $conn->cmd("exit");
 }
@@ -234,8 +221,6 @@ sub end($$)
 sub disconnect($$)
 {
     my ($self, $conn) = @_;
-
-    return unless(defined($conn) && $self->protocol eq 'telnet');
 
     $conn->close;
 }
