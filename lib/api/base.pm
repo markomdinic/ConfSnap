@@ -88,6 +88,7 @@ sub new($$$)
 	return undef;
     }
 
+
     # Initialize base API object
     my $self = bless({
 	%{$logger},
@@ -99,6 +100,10 @@ sub new($$$)
     }, $class);
 
     openlog($self->get_progname(), "nodelay,pid", $conf->{'syslog_facility'});
+
+    # Initialize repository
+    $self->init_repository()
+	or return undef;
 
     return $self;
 }

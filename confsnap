@@ -67,7 +67,6 @@ use Config::ContextSensitive qw(:macros);
 ###############################################################################
 
 use api::base;
-#use api::base::vcs;
 use api::util::event;
 
 ###############################################################################
@@ -94,7 +93,6 @@ my $CONF_TEMPLATE = SECTION(
     DIRECTIVE('my_name', ARG(CF_STRING, STORE(TO 'CONFIG', KEY 'my_name'), DEFAULT 'ConfSnap')),
     DIRECTIVE('my_email', ARG(CF_STRING, STORE(TO 'CONFIG', KEY 'my_email')), DEFAULT 'confsnap@localhost'),
     DIRECTIVE('colorize_output', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'colorize_output'), DEFAULT 'yes')),
-    DIRECTIVE('report_changes', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'report_changes'), DEFAULT 'no')),
     DIRECTIVE('repository_datadir', ARG(CF_PATH, STORE(TO 'CONFIG', KEY 'datadir'), DEFAULT '/var/confsnap/')),
     DIRECTIVE('remote_repository_url', ARG(CF_STRING, STORE(TO 'CONFIG', KEY 'remote_repository_url'))),
     DIRECTIVE('report_changes', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'report_changes'), DEFAULT 'no')),

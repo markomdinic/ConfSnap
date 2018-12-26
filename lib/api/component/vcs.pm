@@ -61,12 +61,7 @@ sub new($$)
     return undef unless defined($git);
 
     # Create base VCS object
-    my $self = bless({ 'git' => $git }, $class);
-
-    # Initialize repository
-    $self->init_repository($conf->{'datadir'});
-
-    return $self;
+    return bless({ 'git' => $git }, $class);
 }
 #
 # Change working dir
@@ -133,50 +128,6 @@ sub is_repository($$)
     return (defined($res) && $res ne "" ) ? 1:0;
 }
 #
-# Configure specified VCS repository
-#
-#  This method configures VCS repository with parameters required
-#  for normal operation of VCS. For example, GIT requires either
-#  global or repository-specific commit author's name and email
-#  address before anything can be commited.
-#
-#   Input:	1. self object reference
-#		2. full path to VCS repository
-#
-#   Output:	1. TRUE, if configuration suceeded
-#		   FALSE, if configuration failed
-#		   or path is NOT a VCS repository
-#
-sub config_repository($$)
-{
-    my ($self, $path) = @_;
-    my $res = 1;
-
-    # Path MUST be a proper directory
-    return 0 unless(defined($path) &&
-		    $path ne "" &&
-		    -d $path);
-
-    # If path is a GIT repository ...
-    if($self->is_repository($path)) {
-	my $name = (defined($self->{'conf'}->{'my_name'}) &&
-		    $self->{'conf'}->{'my_name'} ne '') ?
-			    $self->{'conf'}->{'my_name'}:'ConfSnap';
-	my $email = (defined($self->{'conf'}->{'my_email'}) &&
-		     $self->{'conf'}->{'my_email'} ne '') ?
-			    $self->{'conf'}->{'my_email'}:`whoami`;
-	# ... change to GIT repository dir ...
-	my $wd = $self->cd($path);
-	# ... configure it with basic parameters
-	$res = $self->{'git'}->config('user.name', $name) &&
-	       $self->{'git'}->config('user.email', (defined($email) && $email ne '') ? $email:'confsnap');
-	# ... and change back to previous working dir
-	chdir($wd);
-    }
-
-    return $res;
-}
-#
 # Initialize specified directory as a VCS repository
 #
 #  This method checks if specified path is a VCS repository
@@ -186,39 +137,125 @@ sub config_repository($$)
 #  path MUST be a proper directory.
 #
 #   Input:	1. self object reference
-#		2. full path to a VCS repository
+#		2. (optional) full path to a VCS repository
+#		3. (optional) remote repository URL
 #
 #   Output:	1. TRUE, if initialization suceeded
 #		   or path is already a VCS repository
 #		   FALSE, if initialization failed
 #		   or path is NOT a proper directory
 #
-sub init_repository($$)
+sub init_repository($;$$)
 {
-    my ($self, $path) = @_;
+    my ($self, $path, $url) = @_;
     my $res = 1;
 
+    $path = $self->{'conf'}->{'datadir'} unless defined($path);
+    $url = $self->{'conf'}->{'remote_repository_url'} unless defined($url);
+
     # Path MUST be a proper directory
-    return 0 unless(defined($path) &&
-		    $path ne "" &&
-		    -d $path);
+    return 0 unless(defined($path) && $path ne "" && -d $path);
 
     # If path is not a GIT repository ...
     if(!$self->is_repository($path)) {
 	# ... initialize it as one
 	$res = $self->{'git'}->init($path);
     }
-
     # If repository is initialized ...
     if($res) {
 	# ... configure it ...
-	$res = $self->config_repository($path);
+	$res = $self->config_repository($path, $url);
 	if($res) {
 	    # ... strip trailing '/', if any
 	    $path =~ s/[\/]+$//g;
 	    # ... keep full path to the repository
 	    $self->{'repo'} = $path;
 	}
+    }
+
+    return $res;
+}
+#
+# Configure specified VCS repository
+#
+#  This method configures VCS repository with parameters required
+#  for normal operation of VCS. For example, GIT requires either
+#  global or repository-specific commit author's name and email
+#  address before anything can be commited.
+#
+#   Input:	1. self object reference
+#		2. (optional) full path to VCS repository
+#		3. (optional) remote repository URL
+#
+#   Output:	1. TRUE, if configuration suceeded
+#		   FALSE, if configuration failed
+#		   or path is NOT a VCS repository
+#
+sub config_repository($;$$)
+{
+    my ($self, $path, $url) = @_;
+    my $res = 1;
+
+    $path = $self->{'conf'}->{'datadir'} unless defined($path);
+    $url = $self->{'conf'}->{'remote_repository_url'} unless defined($url);
+
+    # Path MUST be a proper directory
+    return 0 unless(defined($path) && $path ne "" && -d $path);
+
+    # If path is a GIT repository ...
+    if($self->is_repository($path)) {
+	my $name = (defined($self->{'conf'}->{'my_name'}) &&
+		    $self->{'conf'}->{'my_name'} ne '') ?
+			    $self->{'conf'}->{'my_name'}:'ConfSnap';
+	my $email = (defined($self->{'conf'}->{'my_email'}) &&
+		     $self->{'conf'}->{'my_email'} ne '') ?
+			    $self->{'conf'}->{'my_email'}:`whoami`;
+	# ... change to repository dir ...
+	my $wd = $self->cd($path);
+	# ... configure it with basic parameters
+	$res = $self->{'git'}->config('user.name', $name) &&
+	       $self->{'git'}->config('user.email', (defined($email) && $email ne '') ? $email:'confsnap');
+	# ... and synchronize or init it's contents
+	if($res) {
+	    # Start by assuming that we are
+	    # not synchronized at this point
+	    my $sync = 0;
+	    # If remote repository is configured ...
+	    if(defined($url) && $url ne '') {
+		# ... set remote repository URL
+		$self->{'git'}->remote_add($url);
+		# ... and synchronize with it
+		$sync = $self->{'git'}->pull('master');
+	    }
+	    # If local repository wasn't synchronized
+	    # with the existing remote repository ...
+	    unless($sync) {
+		# ... and local repository doesn't contain data ...
+		my @commits = $self->{'git'}->log();
+		unless(@commits) {
+		    local *F;
+		    # ... create README file ...
+		    $res = open(F, '>README.md');
+		    if($res) {
+			print F "This is a ConfSnap repository.\n";
+			close(F);
+			# ... add it to the repository ...
+			$res = $self->{'git'}->add(".");
+			if($res) {
+			    # ... and author initial commit
+			    $res = $self->{'git'}->commit("Repository initialized");
+			}
+		    }
+		}
+		# If remote repository is configured ...
+		if($res && defined($url) && $url ne '') {
+		    # ...  synchronize it with local repository
+		    $res = $self->{'git'}->push('master');
+		}
+	    }
+	}
+	# ... and change back to previous working dir
+	chdir($wd);
     }
 
     return $res;
@@ -310,9 +347,11 @@ sub commit($$;@)
     # Assume everything is ok, by default
     my $res = 1;
 
+    # Get remote repository URL (if any)
+    my $url = $self->{'conf'}->{'remote_repository_url'};
+
     # Remote repository configured ?
-    if(defined($self->{'conf'}->{'remote_repository_url'}) &&
-       $self->{'conf'}->{'remote_repository_url'} ne "") {
+    if(defined($url) && $url ne '') {
 	# Check if our local repository has
 	# the remote repository configured
 	my $remote = $self->{'git'}->remote_show();
@@ -320,33 +359,35 @@ sub commit($$;@)
 	# remote repository configured ...
 	unless(defined($remote) && ref($remote) eq "HASH") {
 	    # ... Add remote repository URL
-	    $self->{'git'}->remote_add($self->{'conf'}->{'remote_repository_url'});
+	    $self->{'git'}->remote_add($url);
 	    # If our local VCS repository is configured
 	    # with some other remote repository ...
-	} elsif((defined($remote->{'fetch'}) && $remote->{'fetch'} ne $self->{'conf'}->{'remote_repository_url'}) ||
-	        (defined($remote->{'push'}) && $remote->{'push'} ne $self->{'conf'}->{'remote_repository_url'})) {
+	} elsif((defined($remote->{'fetch'}) && $remote->{'fetch'} ne $url) ||
+	        (defined($remote->{'push'}) && $remote->{'push'} ne $url)) {
 	    # ... replace remote repository URL
-	    $self->{'git'}->remote_set($self->{'conf'}->{'remote_repository_url'});
+	    $self->{'git'}->remote_set($url);
 	}
-	# Put changed content into stash
+	# Put changes away temporarily in order to
+	# synchronize with the remote repository
+	# before we commit them
 	$res = $self->{'git'}->stash();
 	if($res) {
 	    # Synchronize with remote repository
-	    $res = $self->{'git'}->pull("master");
+	    $res = $self->{'git'}->pull('master');
+	    # Did we stash anything ?
+	    my $stash = $self->{'git'}->stash_list();
+	    $res &= defined($stash);
 	    if($res) {
 		# Restore stashed changes
-		$res = $self->{'git'}->unstash();
+		$res = $stash ne '' ? $self->{'git'}->unstash():1;
 	    }
 	}
     }
 
-    # If everything is still in order,
-    # add changes to the staging area
     if($res) {
 	# If no files or directories are given,
-	# perform commit on entire repository
-	push @_, "." unless(scalar(@_) > 0);
-
+	# perform commit on the entire repository
+	push @_, '.' unless(scalar(@_) > 0);
 	# Add all given targets to staging area
 	foreach my $target (@_) {
 	    # If target path contains repo dir,
@@ -361,22 +402,19 @@ sub commit($$;@)
 		last;
 	    }
 	}
-    }
-
-    if($res) {
-	# Commit staged changes
-	$res = $self->{'git'}->commit($message);
-	# If commit was successfull and we have
-	# the remote repository configured ...
-	if($res &&
-	   defined($self->{'conf'}->{'remote_repository_url'}) &&
-	   $self->{'conf'}->{'remote_repository_url'} ne "") {
-	    # ... push changes to the remote repository
-	    $res = $self->{'git'}->push("master");
-	    # If push failed ...
-	    unless($res) {
-		# ... forget everything that just happened
-		$self->{'git'}->reset("--hard", "HEAD^1");
+	if($res) {
+	    # Commit staged changes
+	    $res = $self->{'git'}->commit($message);
+	    # If commit was successfull and we have
+	    # the remote repository configured ...
+	    if($res && defined($url) && $url ne '') {
+		# ... push changes to the remote repository
+		$res = $self->{'git'}->push('master');
+		# If push failed ...
+		unless($res) {
+		    # ... forget everything that just happened
+		    $self->{'git'}->reset("--hard", "HEAD^1");
+		}
 	    }
 	}
     }

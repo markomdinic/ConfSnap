@@ -97,7 +97,7 @@ sub new($;$)
 #		2+ git command line arguments
 #
 #   Output:	1. git command output, if successful
-#		   undef, if failed
+#		   empty string, if failed
 #
 sub git($;@)
 {
@@ -110,13 +110,10 @@ sub git($;@)
 		    -x $self->{'cmd'});
 
     # Format full git command line
-    my $cmd = $self->{'cmd'}." ".join(' ', @_)." 2>/dev/null";
+    my $cmd = $self->{'cmd'}." ".join(' ', @_).' 2>/dev/null';
 
-    # Run git command ...
-    my $output = `$cmd`;
-
-    # ... and return it's stdout
-    return ($? >> 8) ? undef:$output;
+    # Run git command
+    return `$cmd`;
 }
 #
 # git init
@@ -135,7 +132,8 @@ sub init($$)
 
     return 0 unless(defined($path) && $path ne "" && -d $path);
 
-    return defined($self->git('init', $path)) ? 1:0;
+    $self->git('init', $path);
+    return ($? >> 8) ? 0:1;
 }
 #
 # git config
@@ -155,7 +153,8 @@ sub config($$)
 
     return 0 unless(defined($option) && $option ne "" && defined($value));
 
-    return defined($self->git('config', $option, $value)) ? 1:0;
+    $self->git('config', $option, $value);
+    return ($? >> 8) ? 0:1;
 }
 #
 # git status
@@ -171,7 +170,8 @@ sub status($)
 {
     my $self = shift;
 
-    return $self->git('status');
+    my $status = $self->git('status');
+    return ($? >> 8) ? undef:$status;
 }
 #
 # git branch
@@ -190,7 +190,8 @@ sub branch($$)
 
     return 0 unless(defined($branch) && $branch ne "");
 
-    return defined($self->git('branch', $branch)) ? 1:0;
+    $self->git('branch', $branch);
+    return ($? >> 8) ? 0:1;
 }
 #
 # git checkout
@@ -211,7 +212,8 @@ sub checkout($$)
 
     return 0 unless(defined($target) && $target ne "");
 
-    return defined($self->git('checkout', $target)) ? 1:0;
+    $self->git('checkout', $target);
+    return ($? >> 8) ? 0:1;
 }
 #
 # git add
@@ -232,7 +234,8 @@ sub add($$)
     return 0 unless(defined($path) && $path ne "" &&
 		    (-d $path || -f $path));
 
-    return defined($self->git('add', '-A', $path)) ? 1:0;
+    $self->git('add', '-A', $path);
+    return ($? >> 8) ? 0:1;
 }
 #
 # git rm
@@ -253,7 +256,8 @@ sub rm($$)
     return 0 unless(defined($path) && $path ne "" &&
 		    (-d $path || -f $path));
 
-    return defined($self->git('rm', '-rf', $path)) ? 1:0;
+    $self->git('rm', '-rf', $path);
+    return ($? >> 8) ? 0:1;
 }
 #
 # git stash
@@ -270,10 +274,31 @@ sub stash($)
 {
     my $self = shift;
 
-    return defined($self->git('stash')) ? 1:0;
+    $self->git('stash');
+    return ($? >> 8) ? 0:1;
 }
 #
-# git stash pop
+# git stash list
+#
+#  Get the list of uncommited changes present in git stash.
+#
+#   Input:	1. self object reference (passed implicitly)
+#
+#   Output:	1. stash list text, in scalar context
+#		   array of stash list lines, in list context
+#		   undef/empty array, if failed
+#
+sub stash_list($)
+{
+    my $self = shift;
+
+    my $stash = $self->git('stash', 'list');
+    return wantarray ? ():undef if($? >> 8);
+
+    return wantarray ? ((defined($stash) && $stash ne '') ? split(/[\n\r]+/, $stash):()):$stash;
+}
+#
+# git unstash (stash pop)
 #
 #  Restore stashed changes. It will perform merge with changes
 #  made to the repository after our own changes were stashed.
@@ -289,7 +314,8 @@ sub unstash($)
 {
     my $self = shift;
 
-    return defined($self->git('stash', 'pop')) ? 1:0;
+    $self->git('stash', 'pop');
+    return ($? >> 8) ? 0:1;
 }
 #
 # git reset
@@ -311,10 +337,12 @@ sub reset($;$)
 
     if(defined($path) && $path ne "" &&
        (-d $path || -f $path)) {
-	return $self->git('reset', $path);
+	$self->git('reset', $path);
+    } else {
+	$self->git('reset');
     }
 
-    return defined($self->git('reset')) ? 1:0;
+    return ($? >> 8) ? 0:1;
 }
 #
 # git push
@@ -335,7 +363,8 @@ sub push($$)
 
     return 0 unless(defined($branch) && $branch ne "");
 
-    return defined($self->git('push', 'origin', $branch)) ? 1:0;
+    $self->git('push', 'origin', $branch);
+    return ($? >> 8) ? 0:1;
 }
 #
 # git pull
@@ -354,7 +383,8 @@ sub pull($;$)
 
     return 0 unless(defined($branch) && $branch ne "");
 
-    return defined($self->git('pull', 'origin', $branch)) ? 1:0;
+    $self->git('pull', 'origin', $branch);
+    return ($? >> 8) ? 0:1;
 }
 #
 # git commit
@@ -386,7 +416,8 @@ sub commit($$;$$)
 	$args .= " --author=\"".$author." <".$email.">\"";
     }
 
-    return defined($self->git('commit', $args)) ? 1:0;
+    $self->git('commit', $args);
+    return ($? >> 8) ? 0:1;
 }
 #
 # git log
@@ -405,8 +436,9 @@ sub log($;@)
     my $self = shift;
 
     my $log = $self->git('log', @_);
+    return wantarray ? ():undef if($? >> 8);
 
-    return wantarray ? ((defined($log) && $log ne "") ? split(/[\n\r]+/, $log):()):$log;
+    return wantarray ? ((defined($log) && $log ne '') ? split(/[\n\r]+/, $log):()):$log;
 }
 #
 # git show (-s --format=%ct)
@@ -423,7 +455,8 @@ sub timestamp($$)
 {
     my ($self, $commit) = @_;
 
-    return $self->git('show', '-s', '--format=%ct', $commit);
+    my $timestamp = $self->git('show', '-s', '--format=%ct', $commit);
+    return ($? >> 8) ? undef:$timestamp;
 }
 #
 # git diff
@@ -447,6 +480,7 @@ sub diff($;$$)
     my $self = shift;
 
     my $diff = $self->git('diff', @_);
+    return wantarray ? ():undef if($? >> 8);
 
     return wantarray ? ((defined($diff) && $diff ne "") ? split(/[\n\r]+/, $diff):()):$diff;
 }
@@ -476,6 +510,7 @@ sub list($;$@)
     $index = 0 unless(defined($index) && $index =~ /^\d+$/ && $index >= 0);
 
     my $list = $self->git('rev-list', '--skip='.$index, 'master', '--', @_);
+    return wantarray ? ():undef if($? >> 8);
 
     return wantarray ? ((defined($list) && $list ne "") ? split(/[\n\r]+/, $list):()):$list;
 }
@@ -503,6 +538,7 @@ sub list_before($$;@)
     return 0 unless(defined($time) && $time ne "");
 
     my $list = $self->git('rev-list', '--before='.$time, 'master', '--', @_);
+    return wantarray ? ():undef if($? >> 8);
 
     return wantarray ? ((defined($list) && $list ne "") ? split(/[\n\r]+/, $list):()):$list;
 }
@@ -530,6 +566,7 @@ sub list_after($$)
     return 0 unless(defined($time) && $time ne "");
 
     my $list = $self->git('rev-list', '--after='.$time, 'master', '--', @_);
+    return wantarray ? ():undef if($? >> 8);
 
     return wantarray ? ((defined($list) && $list ne "") ? split(/[\n\r]+/, $list):()):$list;
 }
@@ -542,7 +579,8 @@ sub list_after($$)
 #   Input:	1. self object reference (passed implicitly)
 #		2. URL to set as origin
 #
-#   Output:	none
+#   Output:	1. TRUE, if succeeded
+#		   FALSE, if failed
 #
 sub remote_set($$)
 {
@@ -551,6 +589,7 @@ sub remote_set($$)
     return unless(defined($url) && $url ne "");
 
     $self->git('remote', 'set-url', 'origin', $url);
+    return ($? >> 8) ? 0:1;
 }
 #
 # git remote add
@@ -561,7 +600,8 @@ sub remote_set($$)
 #   Input:	1. self object reference (passed implicitly)
 #		2. URL to set as origin
 #
-#   Output:	none
+#   Output:	1. TRUE, if succeeded
+#		   FALSE, if failed
 #
 sub remote_add($$)
 {
@@ -570,6 +610,7 @@ sub remote_add($$)
     return unless(defined($url) && $url ne "");
 
     $self->git('remote', 'add', 'origin', $url);
+    return ($? >> 8) ? 0:1;
 }
 #
 # git remote show
@@ -587,7 +628,7 @@ sub remote_show($)
     my $self = shift;
 
     my @show = $self->git('remote', 'show', 'origin');
-    return undef unless(@show);
+    return undef if(($? >> 8) || scalar(@show) < 1);
 
     my %remote = ();
 
