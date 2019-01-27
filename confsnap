@@ -896,7 +896,7 @@ sub fetch_device_config($$)
     # Get device object reference
     my $device = $DEVICE{$device_name};
     unless(defined($device)) {
-	$API->logging('LOG_DEBUG', "Snapshot creation for device ".$device_name." [".$device->{'host'}."] is not configured properly");
+	$API->logging('LOG_DEBUG', "Snapshot creation for device ".$device_name." is not configured properly");
 	return 1;
     }
 
