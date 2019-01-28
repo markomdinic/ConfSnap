@@ -1,7 +1,7 @@
 #
 # module::device::mikrotik.pm
 #
-# Copyright (c) 2018 Marko Dinic. All rights reserved.
+# Copyright (c) 2019 Marko Dinic. All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -98,40 +98,51 @@ sub connect($$)
 
     return undef unless(defined($host) && $host ne "");
 
+    my $proto = $self->protocol;
+    return undef unless defined($proto);
+
     my $conn;
 
-    # Safely load Net::Telnet on demand
-    $self->api->load_module('Net::Telnet')
-	or return undef;
-
     # Connect using SSH ?
-    if($self->protocol eq 'ssh') {
-	# Safely load Net::OpenSSH on demand
-	$self->api->load_module('Net::OpenSSH')
+    if($proto eq 'ssh') {
+
+	# Safely load Net::SSH::Expect on demand
+	$self->api->load_module('Net::SSH::Expect')
 	    or return undef;
 	# Get login credentials
 	my $user = $self->username;
 	return undef unless defined($user);
 	my $pass = $self->password;
 	return undef unless defined($pass);
-	# Create new SSH client and connect to RouterOS device
-	my $ssh = Net::OpenSSH->new($host,
-				    'user' => $user,
-				    'password' => $pass);
+	eval {
+	    # Create new SSH client and connect to RouterOS device
+	    $conn = Net::SSH::Expect->new('host' => $host,
+					  'user' => $user,
+					  'password' => $pass,
+					  'ssh_option' => '-oStrictHostKeyChecking=no',
+					  'terminator' => "\r\n",
+					  'raw_pty' => 1);
+	};
 	# Abort on error
-	return undef if $ssh->error;
-	# Use SSH client as terminal slave
-	my ($pty, $pid) = $ssh->open2pty({'stderr_to_stdout' => 1});
-	# Use telnet module as terminal handler
-	$conn = Net::Telnet->new('Fhopen' => $pty,
-				 'Telnetmode' => 0,
-				 'Timeout' => $self->{'timeout'});
+	return undef if($@ || !defined($conn));
+
     # Connect using telnet ?
-    } elsif($self->protocol eq 'telnet') {
+    } elsif($proto eq 'telnet') {
+
+	# Safely load Net::Telnet on demand
+	$self->api->load_module('Net::Telnet')
+	    or return undef;
 	# Create new telnet client
 	$conn = Net::Telnet->new('Timeout' => $self->{'timeout'});
 	# Telnet to RouterOS device
 	$conn->open($host);
+
+    # Other protocols are not supported
+    } else {
+
+	$self->api->logging('LOG_ERR', "Protocol %s is not supported by %s", $proto, ref($self));
+	return undef;
+
     }
 
     return $conn;
@@ -151,40 +162,72 @@ sub auth($$)
 
     return 0 unless(defined($conn));
 
-    # Wait for login, password or command prompt
-    my ($p, $m) = $conn->waitfor('/'.&RE_LOGIN.'|'.&RE_PASSWD.'|'.&RE_PROMPT.'/');
-    # If we got login prompt ...
-    if($m =~ /@{[RE_LOGIN]}/) {
-	my $user = $self->username;
-	return 0 unless defined($user);
-	# ... send username
-	$conn->put($user."\n");
-	# ... wait for password or command prompt
-	($p, $m) = $conn->waitfor('/'.&RE_PASSWD.'|'.&RE_PROMPT.'/');
-    }
-    # If we got password prompt ...
-    if($m =~ /@{[RE_PASSWD]}/) {
-	my $pass = $self->password;
-	return 0 unless defined($pass);
-	# ... send password
-	$conn->put($pass."\n");
-	# ... wait for command prompt or login failed message
-	($p, $m) = $conn->waitfor('/'.&RE_FAILED.'|'.&RE_PROMPT.'/');
-	# If login failed, abort
-	return 0 if($m =~ /@{[RE_FAILED]}/);
+    # If selected protocol is SSH ...
+    if($self->protocol eq 'ssh') {
+
+	# ... log in ...
+	my $m = $conn->login();
+	# ... check for prompt ...
+	return 0 unless(defined($m) && $m =~ /@{[RE_PROMPT]}/);
+	# ... and we are done
+	return 1;
+
+    # If selected protocol is telnet ...
+    } elsif($self->protocol eq 'telnet') {
+
+	# Wait for login, password or command prompt
+	my ($p, $m) = $conn->waitfor('/'.&RE_LOGIN.'|'.&RE_PASSWD.'|'.&RE_PROMPT.'/');
+	# If we got login prompt ...
+	if($m =~ /@{[RE_LOGIN]}/) {
+	    my $user = $self->username;
+	    return 0 unless defined($user);
+	    # ... send username
+	    $conn->put($user."\n");
+	    # ... wait for password or command prompt
+	    ($p, $m) = $conn->waitfor('/'.&RE_PASSWD.'|'.&RE_PROMPT.'/');
+	}
+	# If we got password prompt ...
+	if($m =~ /@{[RE_PASSWD]}/) {
+	    my $pass = $self->password;
+	    return 0 unless defined($pass);
+	    # ... send password
+	    $conn->put($pass."\n");
+	    # ... wait for command prompt or login failed message
+	    ($p, $m) = $conn->waitfor('/'.&RE_FAILED.'|'.&RE_PROMPT.'/');
+	    # If login failed, abort
+	    return 0 if($m =~ /@{[RE_FAILED]}/);
+	}
+        # At this point we are at the command prompt
+	# one way or another (unless login failed).
+	return 1;
+
     }
 
-    # At this point we are at the command prompt
-    # one way or another (unless login failed).
-    return 1;
+    return 0;
 }
 
 sub collect($$)
 {
     my ($self, $conn) = @_;
+    my @cfg = ();
 
-    # Collect running config
-    my @cfg = $conn->cmd("/export verbose");
+    # If protocol is set to SSH ...
+    if($self->protocol eq 'ssh') {
+
+	# Collect running config
+	$conn->send("/export verbose");
+	while(defined(my $line = $conn->read_line())) {
+	    push @cfg, $line."\n";
+	}
+
+    # If selected protocol is telnet ...
+    } elsif($self->protocol eq 'telnet') {
+
+	# Collect running config
+	@cfg = $conn->cmd("/export verbose");
+
+    }
+
     # If we got something ...
     if(@cfg) {
 	# Skip leading trash
@@ -197,6 +240,7 @@ sub collect($$)
 	    @cfg = grep(!/$self->{'filter'}/, @cfg);
 	}
     }
+
     # If we got config, return it as string.
     # Otherwise, return undef
     return (scalar(@cfg) > 0) ? join('', @cfg):undef;
@@ -206,20 +250,37 @@ sub remote($$$;$)
 {
     my ($self, $remote, $conn, $host, $vrf) = @_;
 
-    my $proto = $remote->protocol;
+    my $proto = $self->protocol;
+    my $remote_proto = $remote->protocol;
 
-    if($proto eq 'ssh') {
-	# Get remote device's login username
+    # If remote device's protocol is SSH,
+    # SSH to the device on the remote end
+    if($remote_proto eq 'ssh') {
+
 	my $user = $remote->username;
 	return 0 unless defined($user);
-	# SSH to the router on the remote end
-	$conn->put("/system ssh user=".$user." ".((defined($vrf) && $vrf ne "") ? "routing-table=".$vrf." ":"").$host."\n");
-    } elsif($proto eq 'telnet') {
-	# Telnet to the device on the remote end
-	$conn->put("/system telnet ".((defined($vrf) && $vrf ne "") ? "routing-table=".$vrf." ":"").$host."\n");
+	if($proto eq 'ssh') {
+	    $conn->send("/system ssh user=".$user." ".((defined($vrf) && $vrf ne "") ? "routing-table=".$vrf." ":"").$host);
+	} elsif($proto eq 'telnet') {
+	    $conn->put("/system ssh user=".$user." ".((defined($vrf) && $vrf ne "") ? "routing-table=".$vrf." ":"").$host."\n");
+	}
+
+    # If remote device's protocol is telnet,
+    # telnet to the device on the remote end
+    } elsif($remote_proto eq 'telnet') {
+
+	if($proto eq 'ssh') {
+	    $conn->send("/system telnet ".((defined($vrf) && $vrf ne "") ? "routing-table=".$vrf." ":"").$host);
+	} elsif($proto eq 'telnet') {
+	    $conn->put("/system telnet ".((defined($vrf) && $vrf ne "") ? "routing-table=".$vrf." ":"").$host."\n");
+	}
+
+    # Other remote protocols are not supported
     } else {
-	$self->api->logging('LOG_ERR', "Protocol %s is not supported by %s for indirect device access", $proto, ref($self));
+
+	$self->api->logging('LOG_ERR', "Protocol %s is not supported by %s for indirect device access", $remote_proto, ref($self));
 	return 0;
+
     }
 
     return 1;
@@ -229,7 +290,19 @@ sub end($$)
 {
     my ($self, $conn) = @_;
 
-    $conn->cmd("/quit");
+    # If protocol is set to SSH ...
+    if($self->protocol eq 'ssh') {
+
+	# ... send quit
+	$conn->exec("/quit");
+
+    # If protocol is set to telnet ...
+    } elsif($self->protocol eq 'telnet') {
+
+	# ... send quit
+	$conn->cmd("/quit");
+
+    }
 }
 
 sub disconnect($$)
