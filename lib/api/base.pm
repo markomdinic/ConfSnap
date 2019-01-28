@@ -240,6 +240,7 @@ sub report_config_changes($$)
 		    defined($recipients->[0]) && 
 		    $recipients->[0] ne '');
 
+
     # Include the list of changed files in report ?
     if($self->{'conf'}->{'report_files'}) {
 	# Get the list of changed files
@@ -260,11 +261,15 @@ sub report_config_changes($$)
 	}
     }
 
+    # Get custom report subject (if any)
+    my $subject = $self->{'conf'}->{'report_subject'};
+
     # Send report email
     return $self->send_email($self->{'conf'}->{'my_name'},
 			     $self->{'conf'}->{'my_email'},
 			     $recipients,
-			     '[ConfSnap] Device configuration changes',
+			     (defined($subject) && $subject ne '') ?
+					$subject:'[ConfSnap] Device configuration changes',
 			     $report);
 }
 #

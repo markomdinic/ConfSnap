@@ -98,6 +98,7 @@ my $CONF_TEMPLATE = SECTION(
     DIRECTIVE('report_changes', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'report_changes'), DEFAULT 'no')),
     DIRECTIVE('report_files', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'report_files'), DEFAULT 'yes')),
     DIRECTIVE('report_diffs', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'report_diffs'), DEFAULT 'yes')),
+    DIRECTIVE('report_subject', ARG(CF_STRING, STORE(TO 'CONFIG', KEY 'report_subject'))),
     DIRECTIVE('report_recipients', ARG(CF_STRING|CF_ARRAY, STORE(TO 'CONFIG', KEY 'report_recipients'))),
     DIRECTIVE('use_smtp', ARG(CF_BOOLEAN, STORE(TO 'CONFIG', KEY 'use_smtp'), DEFAULT 'no')),
     DIRECTIVE('smtp_server', ARG(CF_STRING, STORE(TO 'CONFIG', KEY 'smtp_server'))),

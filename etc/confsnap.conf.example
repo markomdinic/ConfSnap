@@ -26,7 +26,7 @@ my_email		confsnap@localhost.localdomain
 repository_datadir	/var/lib/confsnap
 
 # Optional remote configuration repository
-remote_repository_url	git@git.your.network:configurations/network-device-configurations.git
+remote_repository_url	git@git.your.network.org:configurations/network-device-configurations.git
 
 # Send report email when change is recorded
 report_changes		yes
@@ -37,13 +37,16 @@ report_files		yes
 report_diffs		yes
 
 # Space delimited list of report recipients
-report_recipients	marko.dinic@netcast.rs
+report_recipients	admin@your.network.org
+
+# Optional custom report subject
+report_subject		[ConfSnap] Device configuration changes
 
 # Send report using SMTP instead of local mailer
 use_smtp		yes
 
 # SMTP parameters
-smtp_server		smtp.example.com
+smtp_server		smtp.your.network.org
 smtp_port		587
 smtp_ssl		no
 smtp_tls		yes
