@@ -120,6 +120,8 @@ my $CONF_TEMPLATE = SECTION(
 		))
 	    ))
 	))
+    ), OPTIONAL(
+	DIRECTIVE('skip', ARG(CF_NONE, STORE(TO 'DEVICE', KEY { '$NESTED_SECTION' => { 'skip' => 1 } })))
     ))
 );
 
@@ -903,16 +905,23 @@ sub fetch_device_config($$)
 
     # Ignore devices in VRFs - we are going to process them
     # when processing PE device they are connected to
-    if(defined($device->{'vrf'})) {
-	$API->logging('LOG_DEBUG', "Skipping remote ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."] in vrf ".$device->{'vrf'}." on ".$device->{'parent'}.": processed along with it's parent device");
-	return 1;
+    return 1 if defined($device->{'vrf'});
+
+    # If device is configured to be skipped ...
+    if($device->{'skip'}) {
+	# ... and has no configured VRFs ...
+	unless(defined($device->{'vrfs'})) {
+	    $API->logging('LOG_DEBUG', "Skipping ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+	    # ... just skip it immediately
+	    return 1;
+	}
+    } else {
+	$API->logging('LOG_INFO', "Retrieving configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
     }
 
     my $timeout = defined($device->{'timeout'}) ?
 				$device->{'timeout'}:
 				$CONFIG{'method_timeout'};
-
-    $API->logging('LOG_INFO', "Retrieving configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
 
     # Connect to the device
     my $conn = $EV->invoke_handler('handler' => $device->can('connect'),
@@ -962,23 +971,29 @@ sub fetch_device_config($$)
 	}
     }
 
-    # Collect device configuration
-    my $device_config = $EV->invoke_handler('handler' => $device->can('collect'),
-					    'args' => [ $device, $conn ],
-					    'timeout' => $timeout,
-					    'on_timeout' => sub {
-						$API->logging('LOG_DEBUG', "Timed out while attempting to collect configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
-						return undef;
-					    });
+    my $device_config;
 
-    if(defined($device_config) && $device_config ne "") {
-	$API->logging('LOG_DEBUG', "Collected configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
-	# Replace CRLFs with newlines
-	$device_config =~ s/\n\r+|\r+\n/\n/g;
+    # Unless device is configured to be skipped ...
+    unless($device->{'skip'}) {
+	# ... collect device configuration
+	$device_config = $EV->invoke_handler('handler' => $device->can('collect'),
+					     'args' => [ $device, $conn ],
+					     'timeout' => $timeout,
+					     'on_timeout' => sub {
+						    $API->logging('LOG_DEBUG', "Timed out while attempting to collect configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+						    return undef;
+					     });
+	if(defined($device_config) && $device_config ne "") {
+	    $API->logging('LOG_DEBUG', "Collected configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+	    # Replace CRLFs with newlines
+	    $device_config =~ s/\n\r+|\r+\n/\n/g;
+	} else {
+	    $API->logging('LOG_ERR', "Failed to collect configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
+	    # End processing this device
+	    return 1;
+	}
     } else {
-	$API->logging('LOG_ERR', "Failed to collect configuration from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
-	# End processing this device
-	return 1;
+	$API->logging('LOG_DEBUG', "Skipped configuration collection from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]");
     }
 
     # Can this device type connect to a remote device ?
@@ -986,7 +1001,7 @@ sub fetch_device_config($$)
     if(defined($method_remote)) {
 	# If device has VRFs configured ...
 	if(defined($device->{'vrfs'})) {
-	    $API->logging('LOG_DEBUG', "Device ".$device_name." [".$device->{'host'}."] has configured VRFs");
+	    $API->logging('LOG_DEBUG', "Device ".$device_name." [".$device->{'host'}."] has VRFs attached");
 	    # While still connected to our device,
 	    # collect configuration from configured
 	    # remote devices.
@@ -1000,12 +1015,17 @@ sub fetch_device_config($$)
 			$API->logging('LOG_DEBUG', "Snapshot creation for remote device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."] is not configured properly");
 			next;
 		    }
-
 		    # Remote device type's module must implement 'end' method,
 		    # otherwise we won't be able do detach once we are done
 		    my $method_remote_end = $remote->can('end');
 		    unless(defined($method_remote_end)) {
 			$API->logging('LOG_DEBUG', "Device module \"".$remote->{'type'}."\" used by remote device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."] doesn't implement required method end()");
+			next;
+		    }
+
+		    # Skip remote device if configured to do so
+		    if($remote->{'skip'}) {
+			$API->logging('LOG_DEBUG', "Skipping remote ".$remote->{'type'}." device ".$remote_name." [".$remote->{'host'}."] in VRF ".$vrf." on device ".$device_name." [".$device->{'host'}."]");
 			next;
 		    }
 
@@ -1121,6 +1141,9 @@ sub fetch_device_config($$)
 				});
 
     $API->logging('LOG_DEBUG', "Disconnected from ".$device->{'type'}." device ".$device_name." [".$device->{'host'}."]") unless(defined($res) && !$res);
+
+    # If device was skipped, we are done
+    return 1 if $device->{'skip'};
 
     # Store collected configuration
     $res = $API->store_device_config($device_name, $device_config);

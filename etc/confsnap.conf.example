@@ -60,27 +60,54 @@ smtp_pass		sendersecret
 ##
 ########################################################################################
 
-device firewall1 host firewall1.your.network type asa
+device firewall1 host firewall1.your.network.org type asa
  include_file	"/opt/confsnap/etc/devices/asa.conf"
 
-device border1 host border1.your.network type junos
+device border1 host border1.your.network.org type junos
  include_file	"/opt/confsnap/etc/devices/junos.conf"
 
-device router1 host router1.your.network type ios
+device router1 host router1.your.network.org type ios
  include_file	"/opt/confsnap/etc/devices/ios.conf"
 
-device router2 host router2.your.network type ios
+device router2 host router2.your.network.org type ios
  include_file	"/opt/confsnap/etc/devices/ios.conf"
 
-device switch1 host switch1.your.network type force10
+device switch1 host switch1.your.network.org type force10
  include_file	"/opt/confsnap/etc/devices/force10.conf"
 
-device switch2 host switch2.your.network type force10
+device switch2 host switch2.your.network.org type force10
  include_file	"/opt/confsnap/etc/devices/force10.conf"
 
-device switch3 host switch3.your.network type powerconnect
+device switch3 host switch3.your.network.org type powerconnect
  include_file	"/opt/confsnap/etc/devices/powerconnect.conf"
 
-device customer1 host 172.30.151.11 type ios in vrf CPE-MANAGEMENT-VRF on router2
+#
+# CPE inside VRF on router1 - login to router1 and from there
+# login to CPE and collect it's configuration
+#
+device customer1 host 172.30.151.11 type ios in vrf CUSTOMER1 on router1
  password	customerpass
  enable		customerena
+
+#
+# Configure router params in order to reach attached CPEs,
+# but DON'T collect it's configuration ('skip' at the end)
+#
+device router3 host router3.your.network.org type ios skip
+ include_file	"/opt/confsnap/etc/devices/ios.conf"
+
+#
+# CPE inside VRF on router3 - login to router3 and from there,
+# login to CPE and collect it's configuration; router3's config
+# won't be collected due to 'skip'
+#
+device customer2 host 172.31.100.100 type ios in vrf CUSTOMER2 on router3
+ password	customerpass
+ enable		customerena
+
+#
+# Skip CPE inside VRF on router2
+#
+device customer3 host 192.168.1.123 type mikrotik in vrf CUSTOMER3 on router2 skip
+ username	customeradmin
+ password	customerpass

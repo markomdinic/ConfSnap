@@ -60,20 +60,20 @@ smtp_pass		sendersecret
 ##
 ########################################################################################
 
-device router1 host router1.your.network type ios
+device router1 host router1.your.network.org type ios
  password	adminpass
  enable		enasecret
 
-device router2 host router2.your.network type ios
+device router2 host router2.your.network.org type ios
  username	adminuser
  password	adminpass
  enable		enasecret
 
-device router3 host router3.your.network type junos
+device router3 host router3.your.network.org type junos
  username	adminuser
  password	adminpass
 
-device router4 host router4.your.network type iosxr
+device router4 host router4.your.network.org type iosxr
  username	adminuser
  password	adminpass
  enable		enasecret
