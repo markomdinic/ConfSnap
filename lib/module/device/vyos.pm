@@ -101,7 +101,7 @@ sub connect($$)
 	    $conn = Net::SSH::Expect->new('host' => $host,
 					  'user' => $user,
 					  'password' => $pass,
-					  'ssh_option' => '-oStrictHostKeyChecking=no',
+					  'ssh_option' => '-q -oStrictHostKeyChecking=no',
 					  'raw_pty' => 1);
 	};
 	# Abort on error
@@ -147,11 +147,9 @@ sub auth($$)
     if($self->protocol eq 'ssh') {
 
 	# ... log in ...
-	my $m = $conn->login();
+	my $m = $conn->login(1);
 	# ... check for prompt ...
-	return 0 unless(defined($m) && $m =~ /@{[RE_PROMPT]}/);
-	# ... and we are done
-	return 1;
+	return defined($m) && $m =~ /@{[RE_PROMPT]}/;
 
     # If selected protocol is telnet ...
     } elsif($self->protocol eq 'telnet') {
@@ -195,30 +193,39 @@ sub collect($$)
     # If protocol is set to SSH ...
     if($self->protocol eq 'ssh') {
 
-	# Disable pagination
-	$conn->exec("terminal length 0");
-	# Enter configuration mode
-	$conn->exec("configure");
-	# Collect configuration
-	$conn->exec("show");
-	while(defined(my $line = $conn->read_line())) {
+	# ... get conversation timeout
+	my $timeout = (defined($self->{'timeout'}) &&
+		       $self->{'timeout'} > 2) ?
+			($self->{'timeout'} - 2):1;
+	# ... disable pagination
+	$conn->send("terminal length 0");
+	$conn->waitfor(&RE_PROMPT, $timeout)
+	    or return undef;
+	# ... enter configuration mode
+	$conn->send("configure");
+	$conn->waitfor(&RE_PROMPT, $timeout)
+	    or return undef;
+	# ... collect configuration
+	$conn->send("show");
+	for(my $line = $conn->read_line($timeout);
+	    defined($line) && $line !~ /\[edit\]/i;
+	    $line = $conn->read_line($timeout)) {
 	    push @cfg, $line."\n";
 	}
-	pop @cfg;
-	# Exit configuration mode
-	$conn->exec("exit");
+	# ... exit configuration mode
+	$conn->send("exit");
 
     # If protocol is telnet ...
     } elsif($self->protocol eq 'telnet') {
 
-	# Disable pagination
+	# ... disable pagination
 	$conn->cmd("terminal length 0");
-	# Enter configuration mode
+	# ... enter configuration mode
 	$conn->cmd("configure");
-	# Collect configuration
+	# ... collect configuration
 	@cfg = $conn->cmd("show");
-	# Exit configuration mode
-	$conn->cmd("exit");
+	# ... exit configuration mode
+	$conn->put("exit\n");
 
     }
 

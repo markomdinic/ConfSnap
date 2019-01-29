@@ -51,7 +51,7 @@ our $CONF_TEMPLATE = SECTION(
 use constant {
     RE_LOGIN	=> '(?:[Uu]ser(?:name)?|[Ll]ogin):',
     RE_PASSWD	=> '[Pp]ass(?:word)?:',
-    RE_PROMPT	=> '\[[^\[\]]+\]\s+>\s+',
+    RE_PROMPT	=> '(?:\r+[^\n\r]+)?\[[^\[\]]+\]\s+>\s+',
     RE_FAILED	=> '[Ll]ogin\s+[Ff]ailed\s*,?'
 };
 
@@ -119,7 +119,7 @@ sub connect($$)
 	    $conn = Net::SSH::Expect->new('host' => $host,
 					  'user' => $user,
 					  'password' => $pass,
-					  'ssh_option' => '-oStrictHostKeyChecking=no',
+					  'ssh_option' => '-q -oStrictHostKeyChecking=no',
 					  'terminator' => "\r\n",
 					  'raw_pty' => 1);
 	};
@@ -166,11 +166,9 @@ sub auth($$)
     if($self->protocol eq 'ssh') {
 
 	# ... log in ...
-	my $m = $conn->login();
+	my $m = $conn->login(1);
 	# ... check for prompt ...
-	return 0 unless(defined($m) && $m =~ /@{[RE_PROMPT]}/);
-	# ... and we are done
-	return 1;
+	return defined($m) && $m =~ /@{[RE_PROMPT]}/;
 
     # If selected protocol is telnet ...
     } elsif($self->protocol eq 'telnet') {
@@ -214,9 +212,11 @@ sub collect($$)
     # If protocol is set to SSH ...
     if($self->protocol eq 'ssh') {
 
-	# Collect running config
+	# ... collect running config
 	$conn->send("/export verbose");
-	while(defined(my $line = $conn->read_line())) {
+	while($conn->peek(0) !~ /^@{[RE_PROMPT]}/) {
+	    my $line = $conn->read_line();
+	    last unless defined($line);
 	    push @cfg, $line."\n";
 	}
 
@@ -294,13 +294,13 @@ sub end($$)
     if($self->protocol eq 'ssh') {
 
 	# ... send quit
-	$conn->exec("/quit");
+	$conn->send("/quit");
 
     # If protocol is set to telnet ...
     } elsif($self->protocol eq 'telnet') {
 
 	# ... send quit
-	$conn->cmd("/quit");
+	$conn->put("/quit\n");
 
     }
 }
