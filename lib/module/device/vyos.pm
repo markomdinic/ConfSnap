@@ -40,6 +40,7 @@ our @ISA = qw(api::module);
 
 our $CONF_TEMPLATE = SECTION(
     DIRECTIVE('connection_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'connection_timeout' => '$VALUE' } }))),
+    DIRECTIVE('read_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'read_timeout' => '$VALUE' } }))),
     DIRECTIVE('timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'timeout' => '$VALUE' } }), DEFAULT '10')),
     DIRECTIVE('protocol', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'protocol' => '$VALUE' } }), DEFAULT 'ssh')),
     DIRECTIVE('username', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'username' => '$VALUE' } }))),
@@ -116,7 +117,7 @@ sub connect($$)
 	$self->api->load_module('Net::Telnet')
 	    or return undef;
 	# Create new telnet client
-	$conn = Net::Telnet->new('Timeout' => $self->{'timeout'});
+	$conn = Net::Telnet->new('Timeout' => $self->{'connection_timeout'});
 	# Telnet to VyOS device
 	$conn->open($host);
 
@@ -157,7 +158,8 @@ sub auth($$)
     } elsif($self->protocol eq 'telnet') {
 
 	# Wait for login, password or command prompt
-	my ($p, $m) = $conn->waitfor('/'.&RE_LOGIN.'|'.&RE_PASSWD.'|'.&RE_PROMPT.'/');
+	my ($p, $m) = $conn->waitfor('Match' => '/'.&RE_LOGIN.'|'.&RE_PASSWD.'|'.&RE_PROMPT.'/',
+				     'Timeout' => $self->{'read_timeout'});
 	# If we got login prompt ...
 	if($m =~ /@{[RE_LOGIN]}/) {
 	    my $user = $self->username;
@@ -165,7 +167,8 @@ sub auth($$)
 	    # ... send username
 	    $conn->put($user."\n");
 	    # ... wait for password or command prompt
-	    ($p, $m) = $conn->waitfor('/'.&RE_PASSWD.'|'.&RE_PROMPT.'/');
+	    ($p, $m) = $conn->waitfor('Match' => '/'.&RE_PASSWD.'|'.&RE_PROMPT.'/',
+				      'Timeout' => $self->{'read_timeout'});
 	}
 	# If we got password prompt ...
 	if($m =~ /@{[RE_PASSWD]}/) {
@@ -174,7 +177,8 @@ sub auth($$)
 	    # ... send password
 	    $conn->put($pass."\n");
 	    # ... wait for command prompt or login failed message
-	    ($p, $m) = $conn->waitfor('/'.&RE_FAILED.'|'.&RE_PROMPT.'/');
+	    ($p, $m) = $conn->waitfor('Match' => '/'.&RE_FAILED.'|'.&RE_PROMPT.'/',
+				      'Timeout' => $self->{'read_timeout'});
 	    # If login failed, abort
 	    return 0 if($m =~ /@{[RE_FAILED]}/);
 	}
@@ -196,9 +200,7 @@ sub collect($$)
     if($self->protocol eq 'ssh') {
 
 	# ... get conversation timeout
-	my $timeout = (defined($self->{'timeout'}) &&
-		       $self->{'timeout'} > 2) ?
-			($self->{'timeout'} - 2):1;
+	my $timeout = $self->{'read_timeout'};
 	# ... disable pagination
 	$conn->send("terminal length 0");
 	$conn->waitfor(&RE_PROMPT, $timeout)
@@ -221,11 +223,14 @@ sub collect($$)
     } elsif($self->protocol eq 'telnet') {
 
 	# ... disable pagination
-	$conn->cmd("terminal length 0");
+	$conn->cmd('String' => "terminal length 0",
+		   'Timeout' => $self->{'read_timeout'});
 	# ... enter configuration mode
-	$conn->cmd("configure");
+	$conn->cmd('String' => "configure",
+		   'Timeout' => $self->{'read_timeout'});
 	# ... collect configuration
-	@cfg = $conn->cmd("show");
+	@cfg = $conn->cmd('String' => "show",
+			  'Timeout' => $self->{'read_timeout'});
 	# ... exit configuration mode
 	$conn->put("exit\n");
 

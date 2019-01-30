@@ -40,6 +40,7 @@ our @ISA = qw(api::module);
 
 our $CONF_TEMPLATE = SECTION(
     DIRECTIVE('connection_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'connection_timeout' => '$VALUE' } }))),
+    DIRECTIVE('read_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'read_timeout' => '$VALUE' } }))),
     DIRECTIVE('timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'timeout' => '$VALUE' } }), DEFAULT '10')),
     DIRECTIVE('protocol', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'protocol' => '$VALUE' } }), DEFAULT 'ssh')),
     DIRECTIVE('username', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'username' => '$VALUE' } }))),
@@ -135,7 +136,7 @@ sub connect($$)
 	$self->api->load_module('Net::Telnet')
 	    or return undef;
 	# Create new telnet client
-	$conn = Net::Telnet->new('Timeout' => $self->{'timeout'});
+	$conn = Net::Telnet->new('Timeout' => $self->{'connection_timeout'});
 	# Telnet to RouterOS device
 	$conn->open($host);
 
@@ -176,7 +177,8 @@ sub auth($$)
     } elsif($self->protocol eq 'telnet') {
 
 	# Wait for login, password or command prompt
-	my ($p, $m) = $conn->waitfor('/'.&RE_LOGIN.'|'.&RE_PASSWD.'|'.&RE_PROMPT.'/');
+	my ($p, $m) = $conn->waitfor('Match' => '/'.&RE_LOGIN.'|'.&RE_PASSWD.'|'.&RE_PROMPT.'/',
+				     'Timeout' => $self->{'read_timeout'});
 	# If we got login prompt ...
 	if($m =~ /@{[RE_LOGIN]}/) {
 	    my $user = $self->username;
@@ -184,7 +186,8 @@ sub auth($$)
 	    # ... send username
 	    $conn->put($user."\n");
 	    # ... wait for password or command prompt
-	    ($p, $m) = $conn->waitfor('/'.&RE_PASSWD.'|'.&RE_PROMPT.'/');
+	    ($p, $m) = $conn->waitfor('Match' => '/'.&RE_PASSWD.'|'.&RE_PROMPT.'/',
+				      'Timeout' => $self->{'read_timeout'});
 	}
 	# If we got password prompt ...
 	if($m =~ /@{[RE_PASSWD]}/) {
@@ -193,7 +196,8 @@ sub auth($$)
 	    # ... send password
 	    $conn->put($pass."\n");
 	    # ... wait for command prompt or login failed message
-	    ($p, $m) = $conn->waitfor('/'.&RE_FAILED.'|'.&RE_PROMPT.'/');
+	    ($p, $m) = $conn->waitfor('Match' => '/'.&RE_FAILED.'|'.&RE_PROMPT.'/',
+				      'Timeout' => $self->{'read_timeout'});
 	    # If login failed, abort
 	    return 0 if($m =~ /@{[RE_FAILED]}/);
 	}
@@ -217,7 +221,7 @@ sub collect($$)
 	# ... collect running config
 	$conn->send("/export verbose");
 	while($conn->peek(0) !~ /^@{[RE_PROMPT]}/) {
-	    my $line = $conn->read_line();
+	    my $line = $conn->read_line($self->{'read_timeout'});
 	    last unless defined($line);
 	    push @cfg, $line."\n";
 	}
@@ -226,7 +230,8 @@ sub collect($$)
     } elsif($self->protocol eq 'telnet') {
 
 	# Collect running config
-	@cfg = $conn->cmd("/export verbose");
+	@cfg = $conn->cmd('String' => "/export verbose",
+			  'Timeout' => $self->{'read_timeout'});
 
     }
 
