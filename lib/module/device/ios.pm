@@ -40,7 +40,7 @@ our @ISA = qw(api::module);
 
 our $CONF_TEMPLATE = SECTION(
     DIRECTIVE('connection_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'connection_timeout' => '$VALUE' } }))),
-    DIRECTIVE('read_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'read_timeout' => '$VALUE' } }))),
+    DIRECTIVE('read_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'read_timeout' => '$VALUE' } }), DEFAULT '10')),
     DIRECTIVE('timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'timeout' => '$VALUE' } }), DEFAULT '10')),
     DIRECTIVE('protocol', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'protocol' => '$VALUE' } }), DEFAULT 'ssh')),
     DIRECTIVE('username', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'username' => '$VALUE' } }))),
@@ -54,7 +54,7 @@ our $CONF_TEMPLATE = SECTION(
 use constant {
     RE_LOGIN	=> '(?:[Uu]ser(?:name)?|[Ll]ogin):',
     RE_PASSWD	=> '[Pp]ass(?:word)?:',
-    RE_PROMPT	=> '[a-zA-Z0-9\_\-\+]+[>#]',
+    RE_PROMPT	=> '(?:\r\n)?[a-zA-Z0-9\_\-\+]+[>#]',
     RE_FAILED	=> '(?:%\s*)?(?:[Aa]uthentication|[Ll]ogin)\s+[Ff]ailed'
 };
 
@@ -126,6 +126,7 @@ sub connect($$)
 					  'user' => $user,
 					  'password' => $pass,
 					  'ssh_option' => '-q -oStrictHostKeyChecking=no',
+					  'terminator' => "\r\n",
 					  'raw_pty' => 1,
 					  'timeout' => $self->{'connection_timeout'});
 	};
@@ -227,12 +228,12 @@ sub collect($$)
     # If protocol is set to SSH ...
     if($self->protocol eq 'ssh') {
 
-	# ... use 1 second timeout by default
-	$timeout = 1 unless defined($timeout);
 	# ... disable pagination
 	$conn->send("terminal length 0");
 	$conn->waitfor(&RE_PROMPT, $timeout)
 	    or return undef;
+	# ... flush buffer
+	$conn->eat($conn->peek(0));
 	# ... collect configuration
 	$conn->send("show running-conf");
 	while($conn->peek(0) !~ /^@{[RE_PROMPT]}/) {

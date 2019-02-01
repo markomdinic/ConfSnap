@@ -40,7 +40,7 @@ our @ISA = qw(api::module);
 
 our $CONF_TEMPLATE = SECTION(
     DIRECTIVE('connection_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'connection_timeout' => '$VALUE' } }))),
-    DIRECTIVE('read_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'read_timeout' => '$VALUE' } }))),
+    DIRECTIVE('read_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'read_timeout' => '$VALUE' } }), DEFAULT '10')),
     DIRECTIVE('timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'timeout' => '$VALUE' } }), DEFAULT '10')),
     DIRECTIVE('protocol', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'protocol' => '$VALUE' } }), DEFAULT 'ssh')),
     DIRECTIVE('username', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'username' => '$VALUE' } }))),
@@ -224,8 +224,8 @@ sub collect($$)
     # If protocol is set to SSH ...
     if($self->protocol eq 'ssh') {
 
-	# ... use 1 second timeout by default
-	$timeout = 1 unless defined($timeout);
+	# ... flush buffer
+	$conn->eat($conn->peek(0));
 	# ... collect running config
 	$conn->send("/export verbose");
 	while($conn->peek(0) !~ /^@{[RE_PROMPT]}/) {
