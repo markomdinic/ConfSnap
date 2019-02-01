@@ -260,6 +260,8 @@ sub collect($$)
 	while((my $l = shift @cfg)) {
 	    last if($l =~ /^[Cc]urrent\s+[Cc]onfiguration/);
 	}
+	# ... skip trailing trash
+	pop @cfg if $cfg[$#cfg] =~ /^@{[RE_PROMPT]}/;
 	# ... and if filter regexp is defined ...
 	if(defined($self->{'filter'}) && $self->{'filter'} ne "") {
 	    # ... remove all matching lines
