@@ -162,7 +162,7 @@ sub auth($$)
 				     'Timeout' => $self->{'read_timeout'});
 	# If we got login prompt ...
 	if($m =~ /@{[RE_LOGIN]}/) {
-	    my $user = $self->username;
+	    my $user = $self->{'username'};
 	    return 0 unless defined($user);
 	    # ... send username
 	    $conn->put($user."\n");
@@ -172,7 +172,7 @@ sub auth($$)
 	}
 	# If we got password prompt ...
 	if($m =~ /@{[RE_PASSWD]}/) {
-	    my $pass = $self->password;
+	    my $pass = $self->{'password'};
 	    return 0 unless defined($pass);
 	    # ... send password
 	    $conn->put($pass."\n");
