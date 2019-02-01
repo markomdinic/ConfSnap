@@ -66,6 +66,20 @@ sub register()
 
 ##############################################################################################
 
+sub username($)
+{
+    my $self = shift;
+
+    return defined($self->{'username'}) ? $self->{'username'}:undef;
+}
+
+sub password($)
+{
+    my $self = shift;
+
+    return defined($self->{'password'}) ? $self->{'password'}:'';
+}
+
 sub protocol($)
 {
     my $self = shift;
@@ -94,9 +108,9 @@ sub connect($$)
 	$self->api->load_module('Net::SSH::Expect')
 	    or return undef;
 	# Get login credentials
-	my $user = $self->{'username'};
+	my $user = $self->username;
 	return undef unless defined($user);
-	my $pass = $self->{'password'};
+	my $pass = $self->password;
 	return undef unless defined($pass);
 	eval {
 	    # Create new SSH client and connect to VyOS device
@@ -150,35 +164,38 @@ sub auth($$)
     if($self->protocol eq 'ssh') {
 
 	# ... log in ...
-	my $m = $conn->login(1);
+	my $m = $conn->login();
 	# ... check for prompt ...
 	return defined($m) && $m =~ /@{[RE_PROMPT]}/;
 
     # If selected protocol is telnet ...
     } elsif($self->protocol eq 'telnet') {
 
+	# Get connection timeout
+	my $timeout = $self->{'connection_timeout'};
+
 	# Wait for login, password or command prompt
 	my ($p, $m) = $conn->waitfor('Match' => '/'.&RE_LOGIN.'|'.&RE_PASSWD.'|'.&RE_PROMPT.'/',
-				     'Timeout' => $self->{'read_timeout'});
+				     'Timeout' => $timeout);
 	# If we got login prompt ...
 	if($m =~ /@{[RE_LOGIN]}/) {
-	    my $user = $self->{'username'};
+	    my $user = $self->username;
 	    return 0 unless defined($user);
 	    # ... send username
 	    $conn->put($user."\n");
 	    # ... wait for password or command prompt
 	    ($p, $m) = $conn->waitfor('Match' => '/'.&RE_PASSWD.'|'.&RE_PROMPT.'/',
-				      'Timeout' => $self->{'read_timeout'});
+				      'Timeout' => $timeout);
 	}
 	# If we got password prompt ...
 	if($m =~ /@{[RE_PASSWD]}/) {
-	    my $pass = $self->{'password'};
+	    my $pass = $self->password;
 	    return 0 unless defined($pass);
 	    # ... send password
 	    $conn->put($pass."\n");
 	    # ... wait for command prompt or login failed message
 	    ($p, $m) = $conn->waitfor('Match' => '/'.&RE_FAILED.'|'.&RE_PROMPT.'/',
-				      'Timeout' => $self->{'read_timeout'});
+				      'Timeout' => $timeout);
 	    # If login failed, abort
 	    return 0 if($m =~ /@{[RE_FAILED]}/);
 	}
@@ -196,11 +213,14 @@ sub collect($$)
     my ($self, $conn) = @_;
     my @cfg = ();
 
+    # Get conversation timeout
+    my $timeout = $self->{'read_timeout'};
+
     # If protocol is set to SSH ...
     if($self->protocol eq 'ssh') {
 
-	# ... get conversation timeout
-	my $timeout = $self->{'read_timeout'};
+	# ... use 1 second timeout by default
+	$timeout = 1 unless defined($timeout);
 	# ... disable pagination
 	$conn->send("terminal length 0");
 	$conn->waitfor(&RE_PROMPT, $timeout)
@@ -224,13 +244,13 @@ sub collect($$)
 
 	# ... disable pagination
 	$conn->cmd('String' => "terminal length 0",
-		   'Timeout' => $self->{'read_timeout'});
+		   'Timeout' => $timeout);
 	# ... enter configuration mode
 	$conn->cmd('String' => "configure",
-		   'Timeout' => $self->{'read_timeout'});
+		   'Timeout' => $timeout);
 	# ... collect configuration
 	@cfg = $conn->cmd('String' => "show",
-			  'Timeout' => $self->{'read_timeout'});
+			  'Timeout' => $timeout);
 	# ... exit configuration mode
 	$conn->put("exit\n");
 
@@ -253,6 +273,8 @@ sub collect($$)
 sub remote($$$;$)
 {
     my ($self, $remote, $conn, $host, $vrf) = @_;
+
+    return 0 unless defined($conn);
 
     my $proto = $self->protocol;
     my $remote_proto = $remote->protocol;
@@ -294,6 +316,8 @@ sub end($$)
 {
     my ($self, $conn) = @_;
 
+    return unless defined($conn);
+
     # If protocol is set to SSH ...
     if($self->protocol eq 'ssh') {
 
@@ -312,6 +336,8 @@ sub end($$)
 sub disconnect($$)
 {
     my ($self, $conn) = @_;
+
+    return unless defined($conn);
 
     $conn->close;
 }

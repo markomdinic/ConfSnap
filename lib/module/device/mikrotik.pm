@@ -169,16 +169,19 @@ sub auth($$)
     if($self->protocol eq 'ssh') {
 
 	# ... log in ...
-	my $m = $conn->login(1);
+	my $m = $conn->login();
 	# ... check for prompt ...
 	return defined($m) && $m =~ /@{[RE_PROMPT]}/;
 
     # If selected protocol is telnet ...
     } elsif($self->protocol eq 'telnet') {
 
+	# Get connection timeout
+	my $timeout = $self->{'connection_timeout'};
+
 	# Wait for login, password or command prompt
 	my ($p, $m) = $conn->waitfor('Match' => '/'.&RE_LOGIN.'|'.&RE_PASSWD.'|'.&RE_PROMPT.'/',
-				     'Timeout' => $self->{'read_timeout'});
+				     'Timeout' => $timeout);
 	# If we got login prompt ...
 	if($m =~ /@{[RE_LOGIN]}/) {
 	    my $user = $self->username;
@@ -187,7 +190,7 @@ sub auth($$)
 	    $conn->put($user."\n");
 	    # ... wait for password or command prompt
 	    ($p, $m) = $conn->waitfor('Match' => '/'.&RE_PASSWD.'|'.&RE_PROMPT.'/',
-				      'Timeout' => $self->{'read_timeout'});
+				      'Timeout' => $timeout);
 	}
 	# If we got password prompt ...
 	if($m =~ /@{[RE_PASSWD]}/) {
@@ -197,7 +200,7 @@ sub auth($$)
 	    $conn->put($pass."\n");
 	    # ... wait for command prompt or login failed message
 	    ($p, $m) = $conn->waitfor('Match' => '/'.&RE_FAILED.'|'.&RE_PROMPT.'/',
-				      'Timeout' => $self->{'read_timeout'});
+				      'Timeout' => $timeout);
 	    # If login failed, abort
 	    return 0 if($m =~ /@{[RE_FAILED]}/);
 	}
@@ -215,13 +218,18 @@ sub collect($$)
     my ($self, $conn) = @_;
     my @cfg = ();
 
+    # Get conversation timeout
+    my $timeout = $self->{'read_timeout'};
+
     # If protocol is set to SSH ...
     if($self->protocol eq 'ssh') {
 
+	# ... use 1 second timeout by default
+	$timeout = 1 unless defined($timeout);
 	# ... collect running config
 	$conn->send("/export verbose");
 	while($conn->peek(0) !~ /^@{[RE_PROMPT]}/) {
-	    my $line = $conn->read_line($self->{'read_timeout'});
+	    my $line = $conn->read_line($timeout);
 	    last unless defined($line);
 	    push @cfg, $line."\n";
 	}
@@ -231,7 +239,7 @@ sub collect($$)
 
 	# Collect running config
 	@cfg = $conn->cmd('String' => "/export verbose",
-			  'Timeout' => $self->{'read_timeout'});
+			  'Timeout' => $timeout);
 
     }
 
@@ -256,6 +264,8 @@ sub collect($$)
 sub remote($$$;$)
 {
     my ($self, $remote, $conn, $host, $vrf) = @_;
+
+    return 0 unless defined($conn);
 
     my $proto = $self->protocol;
     my $remote_proto = $remote->protocol;
@@ -297,6 +307,8 @@ sub end($$)
 {
     my ($self, $conn) = @_;
 
+    return unless defined($conn);
+
     # If protocol is set to SSH ...
     if($self->protocol eq 'ssh') {
 
@@ -315,6 +327,8 @@ sub end($$)
 sub disconnect($$)
 {
     my ($self, $conn) = @_;
+
+    return unless defined($conn);
 
     $conn->close;
 }

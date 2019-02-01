@@ -135,6 +135,7 @@ sub load_module($$;@)
 	} else {
 	    print STDERR "[ERR] ".$errmsg."\n";
 	}
+	print STDERR "\033[01;31m".$@."\033[00m";
 	return 0;
     }
 
