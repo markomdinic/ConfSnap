@@ -225,7 +225,7 @@ sub collect($$)
     if($self->protocol eq 'ssh') {
 
 	# ... flush buffer
-	$conn->eat($conn->peek(0));
+	$conn->eat($conn->peek(int($timeout / 10)));
 	# ... collect running config
 	$conn->send("/export verbose");
 	while($conn->peek(0) !~ /^@{[RE_PROMPT]}/) {

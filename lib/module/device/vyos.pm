@@ -228,7 +228,7 @@ sub collect($$)
 	$conn->waitfor(&RE_PROMPT, $timeout)
 	    or return undef;
 	# ... flush buffer
-	$conn->eat($conn->peek(0));
+	$conn->eat($conn->peek(int($timeout / 10)));
 	# ... collect configuration
 	$conn->send("show");
 	for(my $line = $conn->read_line($timeout);
