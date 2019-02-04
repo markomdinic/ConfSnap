@@ -229,8 +229,9 @@ sub collect($$)
 	if($conn->waitfor(&RE_PROMPT, $timeout)) {
 	    my $dump = $conn->before();
 	    if(defined($dump) && $dump ne '') {
+		chomp($dump);
 		$dump =~ s/[\r]//g;
-		@cfg = ($dump =~ /([^\n]*[\n]+)/g);
+		@cfg = ($dump =~ /([^\n]*\n)/g);
 	    }
 	}
 

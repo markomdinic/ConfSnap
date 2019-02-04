@@ -267,7 +267,7 @@ sub collect($$)
 	    my $dump = $conn->before();
 	    if(defined($dump) && $dump ne '') {
 		$dump =~ s/[\r]//g;
-		@cfg = ($dump =~ /([^\n]*[\n]+)/g);
+		@cfg = ($dump =~ /([^\n]*\n)/g);
 	    }
 	}
 
