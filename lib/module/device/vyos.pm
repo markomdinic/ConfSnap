@@ -43,6 +43,7 @@ our $CONF_TEMPLATE = SECTION(
     DIRECTIVE('read_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'read_timeout' => '$VALUE' } }), DEFAULT '10')),
     DIRECTIVE('timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'timeout' => '$VALUE' } }), DEFAULT '10')),
     DIRECTIVE('protocol', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'protocol' => '$VALUE' } }), DEFAULT 'ssh')),
+    DIRECTIVE('port', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'port' => '$VALUE' } }))),
     DIRECTIVE('username', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'username' => '$VALUE' } }))),
     DIRECTIVE('password', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'password' => '$VALUE' } }))),
     DIRECTIVE('filter', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'filter' => '$VALUE' } })))
@@ -66,6 +67,32 @@ sub register()
 
 ##############################################################################################
 
+sub protocol($)
+{
+    my $self = shift;
+
+    return defined($self->{'protocol'}) ?
+		    $self->{'protocol'}:'ssh';
+}
+
+sub port($)
+{
+    my $self = shift;
+
+    return $self->{'port'} if defined($self->{'port'});
+
+    my $port;
+
+    my $proto = $self->protocol;
+    if($proto eq 'ssh') {
+	$port = 22;
+    } elsif($proto eq 'telnet') {
+	$port = 23;
+    }
+
+    return $port;
+}
+
 sub username($)
 {
     my $self = shift;
@@ -80,13 +107,6 @@ sub password($)
     return defined($self->{'password'}) ? $self->{'password'}:'';
 }
 
-sub protocol($)
-{
-    my $self = shift;
-
-    return defined($self->{'protocol'}) ?
-		    $self->{'protocol'}:'ssh';
-}
 
 ##############################################################################################
 
@@ -98,6 +118,9 @@ sub connect($$)
 
     my $proto = $self->protocol;
     return undef unless(defined($proto) && $proto ne '');
+
+    my $port = $self->port;
+    return undef unless(defined($port) && $port > 0 && $port < 65536);
 
     my $conn;
 
@@ -115,6 +138,7 @@ sub connect($$)
 	eval {
 	    # Create new SSH client and connect to VyOS device
 	    $conn = Net::SSH::Expect->new('host' => $host,
+					  'port' => $port,
 					  'user' => $user,
 					  'password' => $pass,
 					  'ssh_option' => '-q -oStrictHostKeyChecking=no',
@@ -131,7 +155,8 @@ sub connect($$)
 	$self->api->load_module('Net::Telnet')
 	    or return undef;
 	# Create new telnet client
-	$conn = Net::Telnet->new('Timeout' => $self->{'connect_timeout'});
+	$conn = Net::Telnet->new('Port' => $port,
+				 'Timeout' => $self->{'connect_timeout'});
 	# Telnet to VyOS device
 	$conn->open($host);
 
