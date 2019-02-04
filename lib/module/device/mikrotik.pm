@@ -250,7 +250,7 @@ sub collect($$)
 	# Skip trailing trash
 	for(;scalar(@cfg) > 0 && $cfg[$#cfg] =~ /^[\e\r\n\#]|interrupt/i; pop @cfg) {}
 	# If filter regexp is defined ...
-	if(defined($self->{'filter'}) && $self->{'filter'} ne "") {
+	if(scalar(@cfg) > 0 && defined($self->{'filter'}) && $self->{'filter'} ne "") {
 	    # ... remove all matching lines
 	    @cfg = grep(!/$self->{'filter'}/, @cfg);
 	}

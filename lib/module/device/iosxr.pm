@@ -51,10 +51,7 @@ our $CONF_TEMPLATE = SECTION(
 ##############################################################################################
 
 use constant {
-    RE_LOGIN	=> '(?:[Uu]ser(?:name)?|[Ll]ogin):',
-    RE_PASSWD	=> '[Pp]ass(?:word)?:',
     RE_PROMPT	=> '\r?RP\/\d+\/RSP\d+\/CPU\d+:[^#]+#',
-    RE_FAILED	=> '(?:%\s*)?(?:[Aa]uthentication|[Ll]ogin)\s+[Ff]ailed'
 };
 
 ##############################################################################################
@@ -158,7 +155,7 @@ sub auth($$)
 {
     my ($self, $conn) = @_;
 
-   # If selected protocol is SSH ...
+    # If selected protocol is SSH ...
     if($self->protocol eq 'ssh') {
 
 	# ... log in ...
@@ -178,6 +175,7 @@ sub auth($$)
 	# Login to IOS XR device
 	$conn->login($user, $pass)
 	    or return 0;
+
     }
 
     return 1;
@@ -223,13 +221,12 @@ sub collect($$)
     # If we got something ...
     if(@cfg) {
 	# ... skip leading trash
-	while((my $l = shift @cfg)) {
-	    last if($l =~ /^[Bb]uilding configuration/);
-	}
+	for(;scalar(@cfg) > 0 && $cfg[0] !~ /^Building\s+configuration/i; shift @cfg) {}
+	for(shift @cfg; scalar(@cfg) > 0 && $cfg[0] eq ''; shift @cfg) {}
 	# ... skip trailing trash
-	pop @cfg if $cfg[$#cfg] =~ /^@{[RE_PROMPT]}/;
+	for(;scalar(@cfg) > 0 && $cfg[$#cfg] =~ /^(?:@{[RE_PROMPT]})?$/; pop @cfg) {}
 	# ... and if filter regexp is defined ...
-	if(defined($self->{'filter'}) && $self->{'filter'} ne "") {
+	if(scalar(@cfg) > 0 && defined($self->{'filter'}) && $self->{'filter'} ne "") {
 	    # ... remove all matching lines
 	    @cfg = grep(!/$self->{'filter'}/, @cfg);
 	}

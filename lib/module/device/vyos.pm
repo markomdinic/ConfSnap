@@ -258,8 +258,12 @@ sub collect($$)
 
     # If we got something ...
     if(@cfg) {
+	# ... skip leading trash
+	for(;scalar(@cfg) > 0 && $cfg[0] eq ''; shift @cfg) {}
+	# ... skip trailing trash
+	for(;scalar(@cfg) > 0 && $cfg[$#cfg] =~ /^(?:@{[RE_PROMPT]})?$/; pop @cfg) {}
 	# If filter regexp is defined ...
-	if(defined($self->{'filter'}) && $self->{'filter'} ne "") {
+	if(scalar(@cfg) > 0 && defined($self->{'filter'}) && $self->{'filter'} ne "") {
 	    # ... remove all matching lines
 	    @cfg = grep(!/$self->{'filter'}/, @cfg);
 	}

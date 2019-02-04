@@ -257,13 +257,12 @@ sub collect($$)
     # If we got something ...
     if(@cfg) {
 	# ... skip leading trash
-	while((my $l = shift @cfg)) {
-	    last if($l =~ /^[Cc]urrent\s+[Cc]onfiguration/);
-	}
+	for(;scalar(@cfg) > 0 && $cfg[0] !~ /^Current\s+configuration/i; shift @cfg) {}
+	for(shift @cfg; scalar(@cfg) > 0 && $cfg[0] eq ''; shift @cfg) {}
 	# ... skip trailing trash
-	pop @cfg if $cfg[$#cfg] =~ /^@{[RE_PROMPT]}/;
+	for(;scalar(@cfg) > 0 && $cfg[$#cfg] =~ /^(?:@{[RE_PROMPT]})?$/; pop @cfg) {}
 	# ... and if filter regexp is defined ...
-	if(defined($self->{'filter'}) && $self->{'filter'} ne "") {
+	if(scalar(@cfg) > 0 && defined($self->{'filter'}) && $self->{'filter'} ne "") {
 	    # ... remove all matching lines
 	    @cfg = grep(!/$self->{'filter'}/, @cfg);
 	}
