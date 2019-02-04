@@ -39,7 +39,7 @@ our @ISA = qw(api::module);
 ##############################################################################################
 
 our $CONF_TEMPLATE = SECTION(
-    DIRECTIVE('connection_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'connection_timeout' => '$VALUE' } }))),
+    DIRECTIVE('connect_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'connect_timeout' => '$VALUE' } }))),
     DIRECTIVE('read_timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'read_timeout' => '$VALUE' } }), DEFAULT '10')),
     DIRECTIVE('timeout', ARG(CF_INTEGER|CF_POSITIVE, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'timeout' => '$VALUE' } }), DEFAULT '10')),
     DIRECTIVE('protocol', ARG(CF_STRING, STORE(TO 'DEVICE', KEY { '$SECTION' => { 'protocol' => '$VALUE' } }), DEFAULT 'ssh')),
@@ -119,7 +119,7 @@ sub connect($$)
 					  'password' => $pass,
 					  'ssh_option' => '-q -oStrictHostKeyChecking=no',
 					  'raw_pty' => 1,
-					  'timeout' => $self->{'connection_timeout'});
+					  'timeout' => $self->{'connect_timeout'});
 	};
 	# Abort on error
 	return undef if($@ || !defined($conn));
@@ -131,7 +131,7 @@ sub connect($$)
 	$self->api->load_module('Net::Telnet')
 	    or return undef;
 	# Create new telnet client
-	$conn = Net::Telnet->new('Timeout' => $self->{'connection_timeout'});
+	$conn = Net::Telnet->new('Timeout' => $self->{'connect_timeout'});
 	# Telnet to VyOS device
 	$conn->open($host);
 
@@ -172,7 +172,7 @@ sub auth($$)
     } elsif($self->protocol eq 'telnet') {
 
 	# Get connection timeout
-	my $timeout = $self->{'connection_timeout'};
+	my $timeout = $self->{'connect_timeout'};
 
 	# Wait for login, password or command prompt
 	my ($p, $m) = $conn->waitfor('Match' => '/'.&RE_LOGIN.'|'.&RE_PASSWD.'|'.&RE_PROMPT.'/',
