@@ -248,21 +248,21 @@ sub collect($$)
     # If protocol is set to SSH ...
     if($self->protocol eq 'ssh') {
 
-	# ... flush buffer
-	$conn->eat($conn->peek(int($timeout / 10)));
 	# ... collect running config
-	$conn->send("/export verbose");
-	while($conn->peek(0) !~ /^@{[RE_PROMPT]}/) {
-	    my $line = $conn->read_line($timeout);
-	    last unless defined($line);
-	    push @cfg, $line."\n";
+	$conn->send("/export verbose terse");
+	if($conn->waitfor(&RE_PROMPT, $timeout)) {
+	    my $dump = $conn->before();
+	    if(defined($dump) && $dump ne '') {
+		$dump =~ s/[\r]//g;
+		@cfg = ($dump =~ /([^\n]*[\n]+)/g);
+	    }
 	}
 
     # If selected protocol is telnet ...
     } elsif($self->protocol eq 'telnet') {
 
 	# Collect running config
-	@cfg = $conn->cmd('String' => "/export verbose",
+	@cfg = $conn->cmd('String' => "/export verbose terse",
 			  'Timeout' => $timeout);
 
     }
@@ -270,9 +270,9 @@ sub collect($$)
     # If we got something ...
     if(@cfg) {
 	# Skip leading trash
-	for(;scalar(@cfg) > 0 && $cfg[0] =~ /^[\e\r\n\#]|\/export/i; shift @cfg) {}
+	for(;scalar(@cfg) > 0 && $cfg[0] =~ /^[\e\r\n]|\/export/i; shift @cfg) {}
 	# Skip trailing trash
-	for(;scalar(@cfg) > 0 && $cfg[$#cfg] =~ /^[\e\r\n\#]|interrupt/i; pop @cfg) {}
+	for(;scalar(@cfg) > 0 && $cfg[$#cfg] =~ /^[\e\r\n]|interrupt/i; pop @cfg) {}
 	# If filter regexp is defined ...
 	if(scalar(@cfg) > 0 && defined($self->{'filter'}) && $self->{'filter'} ne "") {
 	    # ... remove all matching lines

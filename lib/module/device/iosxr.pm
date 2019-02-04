@@ -221,13 +221,17 @@ sub collect($$)
 	$conn->waitfor(&RE_PROMPT, $timeout)
 	    or return undef;
 	# ... flush buffer
-	$conn->eat($conn->peek(int($timeout / 10)));
+	if($conn->eat($conn->after()) eq '') {
+	    $conn->waitfor(&RE_PROMPT, $timeout);
+	}
 	# ... collect configuration
 	$conn->send("show running-conf");
-	while($conn->peek(0) !~ /^@{[RE_PROMPT]}/) {
-	    my $line = $conn->read_line($timeout);
-	    last unless defined($line);
-	    push @cfg, $line."\n";
+	if($conn->waitfor(&RE_PROMPT, $timeout)) {
+	    my $dump = $conn->before();
+	    if(defined($dump) && $dump ne '') {
+		$dump =~ s/[\r]//g;
+		@cfg = ($dump =~ /([^\n]*[\n]+)/g);
+	    }
 	}
 
     # If protocol is telnet ...

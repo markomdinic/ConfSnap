@@ -150,6 +150,7 @@ sub connect($$)
 					  'password' => $pass,
 					  'ssh_option' => '-q -oStrictHostKeyChecking=no',
 					  'terminator' => "\r\n",
+					  'no_terminal' => 1,
 					  'raw_pty' => 1,
 					  'timeout' => $self->{'connect_timeout'});
 	};
@@ -257,13 +258,17 @@ sub collect($$)
 	$conn->waitfor(&RE_PROMPT, $timeout)
 	    or return undef;
 	# ... flush buffer
-	$conn->eat($conn->peek(int($timeout / 10)));
+	if($conn->eat($conn->after()) eq '') {
+	    $conn->waitfor(&RE_PROMPT, $timeout);
+	}
 	# ... collect configuration
-	$conn->send("show running-conf");
-	while($conn->peek(0) !~ /^@{[RE_PROMPT]}/) {
-	    my $line = $conn->read_line($timeout);
-	    last unless defined($line);
-	    push @cfg, $line."\n";
+	$conn->send("show running-config");
+	if($conn->waitfor(&RE_PROMPT, $timeout)) {
+	    my $dump = $conn->before();
+	    if(defined($dump) && $dump ne '') {
+		$dump =~ s/[\r]//g;
+		@cfg = ($dump =~ /([^\n]*[\n]+)/g);
+	    }
 	}
 
     # If protocol is telnet ...
@@ -273,7 +278,7 @@ sub collect($$)
 	$conn->cmd('String' => "terminal length 0",
 		   'Timeout' => $timeout);
 	# ... collect configuration
-	@cfg = $conn->cmd('String' => "show running-conf",
+	@cfg = $conn->cmd('String' => "show running-config",
 			  'Timeout' => $timeout);
 
     }
