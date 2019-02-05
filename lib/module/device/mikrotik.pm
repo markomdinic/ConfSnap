@@ -270,9 +270,9 @@ sub collect($$)
     # If we got something ...
     if(@cfg) {
 	# Skip leading trash
-	for(;scalar(@cfg) > 0 && $cfg[0] =~ /^[\e\r\n]|\/export/i; shift @cfg) {}
+	for(;scalar(@cfg) > 0 && $cfg[0] =~ /^[\e\r\n\#]|\/export/i; shift @cfg) {}
 	# Skip trailing trash
-	for(;scalar(@cfg) > 0 && $cfg[$#cfg] =~ /^[\e\r\n]|interrupt/i; pop @cfg) {}
+	for(;scalar(@cfg) > 0 && $cfg[$#cfg] =~ /^[\e\r\n\#]|interrupt/i; pop @cfg) {}
 	# If filter regexp is defined ...
 	if(scalar(@cfg) > 0 && defined($self->{'filter'}) && $self->{'filter'} ne "") {
 	    # ... remove all matching lines

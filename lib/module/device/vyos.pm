@@ -54,7 +54,7 @@ our $CONF_TEMPLATE = SECTION(
 use constant {
     RE_LOGIN	=> '(?:[Uu]ser(?:name)?|[Ll]ogin):',
     RE_PASSWD	=> '(?:[^\n\r]+\s+)?[Pp]ass(?:word)?:',
-    RE_PROMPT	=> '(?:\[edit\][\n\r]+)?[^\n\r\@\#\$]+\@[^\@\#\$]+[\#\$]',
+    RE_PROMPT	=> '(?:\[edit\][\n\r]+)?[\w\-\+\.\,\;\:]+\@[^\n\r\s\@\#\$\/\"\'\`]+[\#\$]',
     RE_FAILED	=> '[Ll]ogin\s+[Ii]ncorrect\s*'
 };
 
@@ -106,7 +106,6 @@ sub password($)
 
     return defined($self->{'password'}) ? $self->{'password'}:'';
 }
-
 
 ##############################################################################################
 
