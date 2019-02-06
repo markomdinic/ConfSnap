@@ -55,8 +55,8 @@ our $CONF_TEMPLATE = SECTION(
 use constant {
     RE_LOGIN	=> '(?:[Uu]ser(?:name)?|[Ll]ogin):',
     RE_PASSWD	=> '[Pp]ass(?:word)?:',
-    RE_PROMPT	=> '(?:\r\n)?[a-zA-Z0-9\_\-\+]+[>#]',
-    RE_FAILED	=> '(?:%\s*)?(?:[Aa]uthentication|[Ll]ogin)\s+[Ff]ailed'
+    RE_PROMPT	=> '[\r\n][\w\-\+\.\:\@]+[>#]',
+    RE_FAILED	=> '(?:%\s*)?(?:[Aa]uthentication|[Ll]ogin|[Aa]ccess)\s+(?:[Ff]ailed|[Dd]enied)'
 };
 
 ##############################################################################################
@@ -149,8 +149,6 @@ sub connect($$)
 					  'user' => $user,
 					  'password' => $pass,
 					  'ssh_option' => '-q -oStrictHostKeyChecking=no',
-					  'terminator' => "\r\n",
-					  'no_terminal' => 1,
 					  'raw_pty' => 1,
 					  'timeout' => $self->{'connect_timeout'});
 	};
@@ -165,6 +163,7 @@ sub connect($$)
 	    or return undef;
 	# Create new telnet client
 	$conn = Net::Telnet->new('Port' => $port,
+				 'Errmode' => 'return',
 				 'Timeout' => $self->{'connect_timeout'});
 	# Telnet to IOS device
 	$conn->open($host);
@@ -191,52 +190,76 @@ sub auth($$)
 {
     my ($self, $conn) = @_;
 
+    my $proto = $self->protocol;
+    return undef unless(defined($proto) && $proto ne '');
+
+    # Get connect timeout
+    my $timeout = $self->{'connect_timeout'};
+
+    # Get enable password
+    my $enable = $self->admin_password;
+
     # If selected protocol is SSH ...
-    if($self->protocol eq 'ssh') {
+    if($proto eq 'ssh') {
 
 	# ... log in ...
 	my $m = $conn->login();
 	# ... check for prompt ...
 	return 0 unless(defined($m) && $m =~ /@{[RE_PROMPT]}/);
 
+	# ... change to enable mode, if configured
+	if(defined($enable) && $enable ne '') {
+	    $conn->send("enable");
+	    $conn->waitfor(&RE_PASSWD, $timeout)
+		or return 0;
+	    $conn->send($enable);
+	    $conn->waitfor('(?:'.&RE_PROMPT.'|'.&RE_FAILED.')', $timeout)
+		or return 0;
+	    # ... again, check for prompt
+	    $m = $conn->match();
+	    return 0 unless(defined($m) && $m =~ /@{[RE_PROMPT]}/);
+	}
+
     # If selected protocol is telnet ...
-    } elsif($self->protocol eq 'telnet') {
+    } elsif($proto eq 'telnet') {
 
 	# At least password must be defined
 	my $pass = $self->password;
 	return 0 unless defined($pass);
-
-	# Get connection timeout
-	my $timeout = $self->{'connect_timeout'};
-
 	# Get username
 	my $user = $self->username;
 	# Send username, if defined
 	if(defined($user) && $user ne '') {
 	    $conn->waitfor('Match' => '/'.&RE_LOGIN.'/',
-			   'Timeout' => $timeout);
+			   'Timeout' => $timeout)
+		or return 0;
 	    $conn->put($user."\n");
 	}
 
 	# Send password
 	$conn->waitfor('Match' => '/'.&RE_PASSWD.'/',
-		       'Timeout' => $timeout);
-	$conn->put('String' => $pass."\n",
-		   'Timeout' => $timeout);
+		       'Timeout' => $timeout)
+	    or return 0;
+	$conn->put($pass."\n");
 	# Wait for command prompt or auth failed message
 	my ($p, $m) = $conn->waitfor('Match' => '/'.&RE_FAILED.'|'.&RE_PROMPT.'/',
 				     'Timeout' => $timeout);
 	# If login failed, abort
 	return 0 if($m =~ /@{[RE_FAILED]}/);
 
-    }
+	# ... change to enable mode, if configured
+	if(defined($enable) && $enable ne '') {
+	    $conn->put("enable\n");
+	    $conn->waitfor('Match' => '/'.&RE_PASSWD.'/',
+			   'Timeout' => $timeout)
+		or return 0;
+	    $conn->put($enable."\n");
+	    ($p, $m) = $conn->waitfor('Match' => '/(?:'.&RE_PROMPT.'|'.&RE_FAILED.')/',
+				      'Timeout' => $timeout);
+	    # ... check for prompt
+	    return 0 unless(defined($m) && $m =~ /@{[RE_PROMPT]}/);
+	}
 
-    # Get enable password
-    my $enable = $self->admin_password;
-    # Change to enable mode, if defined
-    if(defined($enable) && $enable ne '') {
-	$conn->cmd('String' => "enable\n".$enable,
-		   'Timeout' => $self->{'read_timeout'});
     }
 
     return 1;
@@ -247,36 +270,38 @@ sub collect($$)
     my ($self, $conn) = @_;
     my @cfg = ();
 
+    my $proto = $self->protocol;
+    return undef unless(defined($proto) && $proto ne '');
+
     # Get conversation timeout
     my $timeout = $self->{'read_timeout'};
 
     # If protocol is set to SSH ...
-    if($self->protocol eq 'ssh') {
+    if($proto eq 'ssh') {
 
 	# ... disable pagination
 	$conn->send("terminal length 0");
 	$conn->waitfor(&RE_PROMPT, $timeout)
 	    or return undef;
-	# ... flush buffer
-	if($conn->eat($conn->after()) eq '') {
-	    $conn->waitfor(&RE_PROMPT, $timeout);
-	}
 	# ... collect configuration
 	$conn->send("show running-config");
 	if($conn->waitfor(&RE_PROMPT, $timeout)) {
 	    my $dump = $conn->before();
 	    if(defined($dump) && $dump ne '') {
+		# Strip CRs ...
 		$dump =~ s/[\r]//g;
+		# ... and split content without stripping LFs
 		@cfg = ($dump =~ /([^\n]*\n)/g);
 	    }
 	}
 
     # If protocol is telnet ...
-    } elsif($self->protocol eq 'telnet') {
+    } elsif($proto eq 'telnet') {
 
 	# ... disable pagination
 	$conn->cmd('String' => "terminal length 0",
-		   'Timeout' => $timeout);
+		   'Timeout' => $timeout)
+	    or return undef;
 	# ... collect configuration
 	@cfg = $conn->cmd('String' => "show running-config",
 			  'Timeout' => $timeout);
